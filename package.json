@@ -1,0 +1,30 @@
+{
+  "name": "tally-sync-ts",
+  "version": "1.0.0",
+  "description": "Simple, efficient, and typed connector for Tally XML API in TypeScript",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "example": "node --import tsx examples/example.ts"
+  },
+  "keywords": [
+    "tally",
+    "tallyprime",
+    "connector",
+    "accounting",
+    "xml",
+    "api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "fast-xml-parser": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
+}
