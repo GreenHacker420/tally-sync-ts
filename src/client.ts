@@ -24,7 +24,10 @@ import {
   VoucherStatistics,
   Currency,
   Periodicity,
-  AutoColVoucherTypeStat
+  AutoColVoucherTypeStat,
+  GSTRegistration,
+  PaginatedResponse,
+  PeriodicVoucherStatisticsOptions
 } from "./types.js";
 import {
   buildExportCollectionXml,
@@ -285,11 +288,37 @@ export class TallyClient {
   }
 
   /**
+   * Fetches GST Registrations / Tax Units
+   */
+  public async getGSTRegistrations(options: PaginatedRequestOptions = {}): Promise<GSTRegistration[]> {
+    const filters = [...(options.filters || [])];
+    if (!filters.some(f => f.name === "TaxUnitForGST")) {
+      filters.push({ name: "TaxUnitForGST", formula: "$$IsSysNameEqual:GST:$TaxType" });
+    }
+    const xml = buildExportCollectionXml("GSTRegistration", {
+      ...options,
+      collectionType: "TAXUNIT",
+      filters,
+    });
+    const resp = await this.sendRequest(xml, "Get GST Registrations");
+    return parseExportCollection<GSTRegistration>(resp, "GSTRegistration");
+  }
+
+  /**
    * Creates or Alters Currencies in Tally
    */
   public async postCurrencies(currencies: Currency[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
     const xml = buildPostXml("Currency", currencies, options);
     const resp = await this.sendRequest(xml, "Post Currencies");
+    return parsePostResponse(resp);
+  }
+
+  /**
+   * Creates or Alters GST Registrations / Tax Units in Tally
+   */
+  public async postGSTRegistrations(registrations: GSTRegistration[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
+    const xml = buildPostXml("GSTRegistration", registrations, options);
+    const resp = await this.sendRequest(xml, "Post GST Registrations");
     return parsePostResponse(resp);
   }
 
@@ -464,11 +493,40 @@ export class TallyClient {
   }
 
   /**
+   * Fetches a paginated collection and returns count metadata, matching the C# PaginatedResponse shape.
+   */
+  public async getPaginatedObjects<T>(
+    collectionType: Parameters<typeof parseExportCollection>[1],
+    options: PaginatedRequestOptions = {}
+  ): Promise<PaginatedResponse<T>> {
+    const pageNum = options.pageNum || 1;
+    const recordsPerPage = options.recordsPerPage || 1000;
+    const [objects, totalCount] = await Promise.all([
+      (async () => {
+        const xml = buildExportCollectionXml(collectionType, { ...options, pageNum, recordsPerPage, disableCountTag: true });
+        const resp = await this.sendRequest(xml, `Get Paginated ${collectionType}`);
+        return parseExportCollection<T>(resp, collectionType);
+      })(),
+      options.disableCountTag
+        ? Promise.resolve(0)
+        : this.getObjectsCount(collectionType, options),
+    ]);
+
+    return {
+      totalCount,
+      pageNum,
+      recordsPerPage,
+      totalPages: totalCount > 0 ? Math.ceil(totalCount / recordsPerPage) : 0,
+      objects,
+    };
+  }
+
+  /**
    * Fetches Periodic Voucher Statistics with auto-column support
    */
   public async getPeriodicVoucherStatistics(
     periodicity: Periodicity,
-    options: RequestOptions = {}
+    options: PeriodicVoucherStatisticsOptions = {}
   ): Promise<AutoColVoucherTypeStat[]> {
     const xml = buildPeriodicVoucherStatisticsXml(periodicity, options);
     const resp = await this.sendRequest(xml, "Get Periodic Voucher Statistics");

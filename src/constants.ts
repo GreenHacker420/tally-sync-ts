@@ -70,8 +70,8 @@ export const DEFAULT_TDL_FUNCTIONS = [
     actions: [
       "01  : If        : NOT $$IsEmpty:##ParamInputDate",
       "02  :   Set     : TempVarYear       : $$Zerofill:($$YearofDate:##ParamInputDate):4",
-      "03  :   Set     : TempVarMonth      : $$Zerofill:($$DayofDate:##ParamInputDate):2", // C# has Day of Date / Month of Date
-      "04  :   Set     : TempVarDate       : $$Zerofill:($$MonthofDate:##ParamInputDate):2",
+      "03  :   Set     : TempVarMonth      : $$Zerofill:($$MonthofDate:##ParamInputDate):2",
+      "04  :   Set     : TempVarDate       : $$Zerofill:($$DayofDate:##ParamInputDate):2",
       "05  :   Return  : $$String:##TempVarYear + $$String:##ParamSeparator + $$String:##TempVarMonth + $$String:##ParamSeparator + $$String:##TempVarDate",
       "06  : End If",
       "07  : Return    : \"\"",

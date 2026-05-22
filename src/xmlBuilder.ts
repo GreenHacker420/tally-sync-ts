@@ -21,7 +21,8 @@ import {
   HSNDetail,
   Currency,
   Periodicity,
-  GSTRegistration
+  GSTRegistration,
+  PeriodicVoucherStatisticsOptions
 } from "./types.js";
 import { DEFAULT_TDL_FUNCTIONS } from "./constants.js";
 
@@ -1396,17 +1397,16 @@ export function buildCountRequestXml(
  */
 export function buildPeriodicVoucherStatisticsXml(
   periodicity: Periodicity,
-  options: RequestOptions = {}
+  options: PeriodicVoucherStatisticsOptions = {}
 ): string {
   const reportName = "TC_AutoColumnStats";
   const periodicityVal = getPeriodicityValue(periodicity);
   const fromDate = formatDateForTally(options.fromDate);
   const toDate = formatDateForTally(options.toDate);
 
-  const typedOptions = options as any;
-  const filterTag = typedOptions.voucherType ? `<FILTERS>TC_VchTypeFilter</FILTERS>` : "";
-  const systemFilter = typedOptions.voucherType
-    ? `<SYSTEM TYPE="Formulae" NAME="TC_VchTypeFilter">$Name="${escapeXml(typedOptions.voucherType)}"</SYSTEM>`
+  const filterTag = options.voucherType ? `<FILTERS>TC_VchTypeFilter</FILTERS>` : "";
+  const systemFilter = options.voucherType
+    ? `<SYSTEM TYPE="Formulae" NAME="TC_VchTypeFilter">$Name="${escapeXml(options.voucherType)}"</SYSTEM>`
     : "";
 
   return `<?xml version="1.0" encoding="utf-8"?>

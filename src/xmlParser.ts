@@ -21,7 +21,8 @@ import {
   VoucherStatistics,
   Currency,
   PeriodicVoucherStat,
-  AutoColVoucherTypeStat
+  AutoColVoucherTypeStat,
+  GSTRegistration
 } from "./types.js";
 
 // Setup XML parser with optimized configurations
@@ -75,6 +76,8 @@ const xmlParser = new XMLParser({
       "TC_MASTERSTATISTICSREPORT",
       "TC_VOUCHERSTATISTICSREPORT",
       "CURRENCY",
+      "GSTREGISTRATION",
+      "GSTREGISTRATIONDETAILS.LIST",
       "VCHTYPESTAT",
       "PERIODSTAT",
     ].includes(name);
@@ -268,7 +271,7 @@ export function parseLastAlterIds(xml: string): LastAlterIds {
  */
 export function parseExportCollection<T>(
   xml: string,
-  type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency"
+  type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration"
 ): T[] {
   const parsed = parseRawXml(xml);
   const collection = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION;
@@ -937,6 +940,36 @@ export function parseExportCollection<T>(
     } else if (type === "Currency") {
       base.name = item.ORIGINALNAME ? String(getSingleValue(item.ORIGINALNAME)) : (item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : ""));
       base.formalName = getSingleValue(item.MAILINGNAME);
+    } else if (type === "GSTRegistration") {
+      base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");
+      base.stateName = String(getSingleValue(item.STATENAME) || "");
+      base.priorStateName = getSingleValue(item.PRIORSTATENAME);
+      base.gstin = getSingleValue(item.GSTREGNUMBER);
+      base.eWayApplicableType = getSingleValue(item.EWAYBILLAPPLICABLETYPE);
+      base.gstUserName = getSingleValue(item.GSTNUSERNAME);
+      base.eSignMethod = getSingleValue(item.ESIGNMETHOD);
+      base.isOtherTerritoryAssessee = item.ISOTHTERRITORYASSESSEE ? String(getSingleValue(item.ISOTHTERRITORYASSESSEE)) === "Yes" : undefined;
+      base.isEwayBillApplicable = item.ISEWAYBILLPRINTAPPLICABLE ? String(getSingleValue(item.ISEWAYBILLPRINTAPPLICABLE)) === "Yes" : undefined;
+      base.isEwayBillApplicableForIntra = item.ISEWAYBILLAPPLICABLEFORINTRA ? String(getSingleValue(item.ISEWAYBILLAPPLICABLEFORINTRA)) === "Yes" : undefined;
+
+      const langData = parseLanguageNameList(item);
+      if (langData.languageNameList) base.languageNameList = langData.languageNameList;
+      if (langData.alias) base.alias = langData.alias;
+      if ((!base.name || base.name === "undefined") && base.languageNameList?.[0]?.names?.[0]) {
+        base.name = base.languageNameList[0].names[0];
+      }
+
+      if (item["GSTREGISTRATIONDETAILS.LIST"]) {
+        const detailList = Array.isArray(item["GSTREGISTRATIONDETAILS.LIST"]) ? item["GSTREGISTRATIONDETAILS.LIST"] : [item["GSTREGISTRATIONDETAILS.LIST"]];
+        base.registrationDetails = detailList.map((detail: any) => ({
+          applicableFrom: getSingleValue(detail.FROMDATE),
+          gstRegistrationType: getSingleValue(detail.REGISTRATIONTYPE),
+          state: getSingleValue(detail.STATE),
+          placeOfSupply: getSingleValue(detail.PLACEOFSUPPLY),
+          isOtherTerritoryAssessee: detail.ISOTHTERRITORYASSESSEE ? String(getSingleValue(detail.ISOTHTERRITORYASSESSEE)) === "Yes" : undefined,
+          isStateCessOn: detail.ISSTATECESSON ? String(getSingleValue(detail.ISSTATECESSON)) === "Yes" : undefined,
+        }));
+      }
     }
 
     return base as T;
@@ -954,6 +987,24 @@ export function parsePostResponse(xml: string): PostResponse[] {
   }
 
   const envelope = parsed?.ENVELOPE;
+  const customResults = envelope?.BODY?.DATA?.RESULTS?.RESULT || envelope?.RESULTS?.RESULT;
+  if (customResults) {
+    const resultItems = Array.isArray(customResults) ? customResults : [customResults];
+    return resultItems.map((item: any) => {
+      const error = getSingleValue(item.ERROR);
+      return {
+        status: error ? "failure" : "success",
+        message: error ? String(error) : "Imported successfully",
+        objectType: getSingleValue(item.OBJECTTYPE),
+        name: getSingleValue(item.NAME),
+        masterId: item.MASTERID ? Number(getSingleValue(item.MASTERID)) : undefined,
+        guid: getSingleValue(item.GUID),
+        remoteId: getSingleValue(item.REMOTEID),
+        error: error ? String(error) : undefined,
+      } as PostResponse;
+    });
+  }
+
   const importResult = envelope?.BODY?.DATA?.IMPORTRESULT;
   if (!importResult) {
     return [{ status: "failure", message: "Failed to parse import result" }];

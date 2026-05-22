@@ -22,6 +22,10 @@ export interface PostRequestOptions {
   stopAtFirstError?: boolean;
 }
 
+export interface PeriodicVoucherStatisticsOptions extends RequestOptions {
+  voucherType?: string;
+}
+
 export interface LicenseInfo {
   serialNumber: string;
   remoteSerialNumber: string;

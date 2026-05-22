@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, buildMasterStatisticsXml, buildVoucherStatisticsXml, buildCountRequestXml, buildPeriodicVoucherStatisticsXml } from "../src/xmlBuilder.js";
 import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics, parseCountResponse, parsePeriodicVoucherStatistics } from "../src/xmlParser.js";
-import { Ledger, Group, Voucher, Currency } from "../src/types.js";
+import { Ledger, Group, Voucher, Currency, GSTRegistration } from "../src/types.js";
 
 test("XML Builder - escapeXml", () => {
   assert.strictEqual(escapeXml("Sales & Services"), "Sales &amp; Services");
@@ -632,3 +632,121 @@ test("XML Builder & Parser - Periodic Voucher Statistics", () => {
   assert.strictEqual(parsed[0].periodStats[1].totalCount, 5);
 });
 
+test("XML Builder - paginated export options", () => {
+  const xml = buildExportCollectionXml("Ledger", {
+    company: "Test Company",
+    pageNum: 2,
+    recordsPerPage: 25,
+    compute: ["ClosingBalance : $ClosingBalance"],
+    computeVar: ["SomeVar : String : \"X\""],
+    childOf: "Sundry Debtors",
+    belongsTo: "Yes",
+    collectionType: "Ledger",
+    filters: [{ name: "OnlyActive", formula: "$IsDeleted = No" }],
+  });
+
+  assert.ok(xml.includes("<SVCURRENTCOMPANY>Test Company</SVCURRENTCOMPANY>"));
+  assert.ok(xml.includes("<COMPUTE>ClosingBalance : $ClosingBalance</COMPUTE>"));
+  assert.ok(xml.includes("<COMPUTEVAR>SomeVar : String : &quot;X&quot;</COMPUTEVAR>"));
+  assert.ok(xml.includes("<COMPUTE>LineIndex : ##vLineIndex</COMPUTE>"));
+  assert.ok(xml.includes("<CHILDOF>Sundry Debtors</CHILDOF>"));
+  assert.ok(xml.includes("<BELONGSTO>Yes</BELONGSTO>"));
+  assert.ok(xml.includes("<FILTERS>OnlyActive</FILTERS>"));
+  assert.ok(xml.includes("<FILTERS>TC_PaginationFilter</FILTERS>"));
+  assert.ok(xml.includes("##vLineIndex &lt;= 50 AND ##vLineIndex &gt; 25"));
+});
+
+test("XML Builder & Parser - GST Registration", () => {
+  const registrations: GSTRegistration[] = [
+    {
+      name: "Maharashtra GST",
+      stateName: "Maharashtra",
+      gstin: "27ABCDE1234F1Z5",
+      isEwayBillApplicable: true,
+      registrationDetails: [
+        {
+          applicableFrom: "2026-04-01",
+          gstRegistrationType: "Regular",
+          state: "Maharashtra",
+          placeOfSupply: "Maharashtra",
+          isStateCessOn: false,
+        },
+      ],
+    },
+  ];
+
+  const postXml = buildPostXml("GSTRegistration", registrations);
+  assert.ok(postXml.includes('<GSTREGISTRATION NAME="Maharashtra GST" ACTION="Create">'));
+  assert.ok(postXml.includes("<STATENAME>Maharashtra</STATENAME>"));
+  assert.ok(postXml.includes("<GSTREGNUMBER>27ABCDE1234F1Z5</GSTREGNUMBER>"));
+  assert.ok(postXml.includes("<ISEWAYBILLPRINTAPPLICABLE>Yes</ISEWAYBILLPRINTAPPLICABLE>"));
+  assert.ok(postXml.includes("<GSTREGISTRATIONDETAILS.LIST>"));
+  assert.ok(postXml.includes("<FROMDATE>20260401</FROMDATE>"));
+  assert.ok(postXml.includes("<REGISTRATIONTYPE>Regular</REGISTRATIONTYPE>"));
+
+  const responseXml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION>
+            <GSTREGISTRATION NAME="Maharashtra GST">
+              <STATENAME>Maharashtra</STATENAME>
+              <GSTREGNUMBER>27ABCDE1234F1Z5</GSTREGNUMBER>
+              <ISEWAYBILLPRINTAPPLICABLE>Yes</ISEWAYBILLPRINTAPPLICABLE>
+              <GSTREGISTRATIONDETAILS.LIST>
+                <FROMDATE>20260401</FROMDATE>
+                <REGISTRATIONTYPE>Regular</REGISTRATIONTYPE>
+                <STATE>Maharashtra</STATE>
+                <PLACEOFSUPPLY>Maharashtra</PLACEOFSUPPLY>
+                <ISSTATECESSON>No</ISSTATECESSON>
+              </GSTREGISTRATIONDETAILS.LIST>
+            </GSTREGISTRATION>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  const parsed = parseExportCollection<GSTRegistration>(responseXml, "GSTRegistration");
+  assert.strictEqual(parsed.length, 1);
+  assert.strictEqual(parsed[0].name, "Maharashtra GST");
+  assert.strictEqual(parsed[0].stateName, "Maharashtra");
+  assert.strictEqual(parsed[0].gstin, "27ABCDE1234F1Z5");
+  assert.strictEqual(parsed[0].isEwayBillApplicable, true);
+  assert.strictEqual(parsed[0].registrationDetails?.[0].gstRegistrationType, "Regular");
+  assert.strictEqual(parsed[0].registrationDetails?.[0].isStateCessOn, false);
+});
+
+test("XML Parser - custom post response report", () => {
+  const xml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <RESULTS>
+            <RESULT>
+              <OBJECTTYPE>Ledger</OBJECTTYPE>
+              <NAME>Cash</NAME>
+              <MASTERID>12</MASTERID>
+              <GUID>abc</GUID>
+              <REMOTEID>remote-1</REMOTEID>
+            </RESULT>
+            <RESULT>
+              <OBJECTTYPE>Ledger</OBJECTTYPE>
+              <NAME>Bad Ledger</NAME>
+              <ERROR>Validation failed</ERROR>
+            </RESULT>
+          </RESULTS>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  const resp = parsePostResponse(xml);
+  assert.strictEqual(resp.length, 2);
+  assert.strictEqual(resp[0].status, "success");
+  assert.strictEqual(resp[0].objectType, "Ledger");
+  assert.strictEqual(resp[0].masterId, 12);
+  assert.strictEqual(resp[0].guid, "abc");
+  assert.strictEqual(resp[1].status, "failure");
+  assert.strictEqual(resp[1].message, "Validation failed");
+});
