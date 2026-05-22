@@ -480,3 +480,17 @@ export interface Voucher extends TallyObject {
   inventoryAllocations?: InventoryAllocation[];
   isInvoice?: boolean;
 }
+
+export interface MasterStatistics {
+  name: string;
+  count: number;
+}
+
+export interface VoucherStatistics {
+  name: string;
+  count: number;
+  cancelledCount: number;
+  totalCount: number;
+  optionalCount: number;
+}
+

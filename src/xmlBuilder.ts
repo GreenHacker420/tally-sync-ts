@@ -77,7 +77,9 @@ export function buildExportCollectionXml(
   options: PaginatedRequestOptions = {}
 ): string {
   const collectionName = `TC_${collectionType}Collection`;
-  const fetchList = options.fetchList || ["MasterId", "*", "CanDelete"];
+  
+  const tallyType = collectionType;
+  const finalFetchList = options.fetchList || ["MasterId", "*", "CanDelete"];
   
   const fromDate = formatDateForTally(options.fromDate);
   const toDate = formatDateForTally(options.toDate);
@@ -107,8 +109,8 @@ export function buildExportCollectionXml(
       <TDL>
         <TDLMESSAGE>
           <COLLECTION NAME="${collectionName}" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <TYPE>${collectionType}</TYPE>
-            ${fetchList.map(field => `<NATIVEMETHOD>${escapeXml(field)}</NATIVEMETHOD>`).join("\n")}
+            <TYPE>${tallyType}</TYPE>
+            ${finalFetchList.map(field => `<NATIVEMETHOD>${escapeXml(field)}</NATIVEMETHOD>`).join("\n")}
             ${filterTags}
           </COLLECTION>
           ${systemFilters}
@@ -118,6 +120,141 @@ export function buildExportCollectionXml(
   </BODY>
 </ENVELOPE>`;
 }
+
+/**
+ * Builds XML to fetch Master Statistics using a TDL Report.
+ * Uses Report/Form/Part/Line/Fields with REPEAT on the native STATObjects collection.
+ * This avoids the crash caused by using COMPUTE tags on native system collections.
+ */
+export function buildMasterStatisticsXml(options: RequestOptions = {}): string {
+  const reportName = "TC_MasterStatisticsReport";
+  const fromDate = formatDateForTally(options.fromDate);
+  const toDate = formatDateForTally(options.toDate);
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>${reportName}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        ${options.company ? `<SVCURRENTCOMPANY>${escapeXml(options.company)}</SVCURRENTCOMPANY>` : ""}
+        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
+        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="${reportName}">
+            <FORMS>${reportName}</FORMS>
+          </REPORT>
+          <FORM NAME="${reportName}">
+            <TOPPARTS>${reportName}</TOPPARTS>
+          </FORM>
+          <PART NAME="${reportName}">
+            <TOPLINES>${reportName}</TOPLINES>
+            <REPEAT>${reportName} : STATObjects</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="${reportName}">
+            <FIELDS>TC_MSName</FIELDS>
+            <FIELDS>TC_MSCount</FIELDS>
+            <XMLTAG>TC_MASTERSTATISTICSREPORT</XMLTAG>
+          </LINE>
+          <FIELD NAME="TC_MSName">
+            <XMLTAG>NAME</XMLTAG>
+            <SET>$Name</SET>
+          </FIELD>
+          <FIELD NAME="TC_MSCount">
+            <XMLTAG>COUNT</XMLTAG>
+            <SET>if $$ISEMPTY:$StatVal then 0 else $StatVal</SET>
+          </FIELD>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
+/**
+ * Builds XML to fetch Voucher Statistics using a TDL Report.
+ * Uses Report/Form/Part/Line/Fields with REPEAT on the native STATVchType collection.
+ * This avoids the crash caused by using COMPUTE tags on native system collections.
+ */
+export function buildVoucherStatisticsXml(options: RequestOptions = {}): string {
+  const reportName = "TC_VoucherStatisticsReport";
+  const fromDate = formatDateForTally(options.fromDate);
+  const toDate = formatDateForTally(options.toDate);
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>${reportName}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        ${options.company ? `<SVCURRENTCOMPANY>${escapeXml(options.company)}</SVCURRENTCOMPANY>` : ""}
+        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
+        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="${reportName}">
+            <FORMS>${reportName}</FORMS>
+          </REPORT>
+          <FORM NAME="${reportName}">
+            <TOPPARTS>${reportName}</TOPPARTS>
+          </FORM>
+          <PART NAME="${reportName}">
+            <TOPLINES>${reportName}</TOPLINES>
+            <REPEAT>${reportName} : STATVchType</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="${reportName}">
+            <FIELDS>TC_VSName</FIELDS>
+            <FIELDS>TC_VSCount</FIELDS>
+            <FIELDS>TC_VSCancelledCount</FIELDS>
+            <FIELDS>TC_VSTotalCount</FIELDS>
+            <FIELDS>TC_VSOptionalCount</FIELDS>
+            <XMLTAG>TC_VOUCHERSTATISTICSREPORT</XMLTAG>
+          </LINE>
+          <FIELD NAME="TC_VSName">
+            <XMLTAG>NAME</XMLTAG>
+            <SET>$Name</SET>
+          </FIELD>
+          <FIELD NAME="TC_VSCount">
+            <XMLTAG>COUNT</XMLTAG>
+            <SET>if $$ISEMPTY:$StatVal then 0 else $StatVal</SET>
+          </FIELD>
+          <FIELD NAME="TC_VSCancelledCount">
+            <XMLTAG>CANCELLEDCOUNT</XMLTAG>
+            <SET>if $$ISEMPTY:$CancVal then 0 else $CancVal</SET>
+          </FIELD>
+          <FIELD NAME="TC_VSTotalCount">
+            <XMLTAG>TOTALCOUNT</XMLTAG>
+            <SET>if $$ISEMPTY:$MigVal then 0 else $MigVal</SET>
+          </FIELD>
+          <FIELD NAME="TC_VSOptionalCount">
+            <XMLTAG>OPTIONALCOUNT</XMLTAG>
+            <SET>if $$ISEMPTY:$$DirectOptionalVch:$Name then 0 else $$DirectOptionalVch:$Name</SET>
+          </FIELD>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
+
 
 /**
  * Builds the XML to fetch Tally's License Information

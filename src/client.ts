@@ -19,14 +19,18 @@ import {
   Godown,
   StockItem,
   Employee,
-  EmployeeGroup
+  EmployeeGroup,
+  MasterStatistics,
+  VoucherStatistics
 } from "./types.js";
 import {
   buildExportCollectionXml,
   buildLicenseInfoRequestXml,
   buildActiveCompanyRequestXml,
   buildLastAlterIdsRequestXml,
-  buildPostXml
+  buildPostXml,
+  buildMasterStatisticsXml,
+  buildVoucherStatisticsXml
 } from "./xmlBuilder.js";
 import {
   parseActiveCompany,
@@ -35,7 +39,9 @@ import {
   parseExportCollection,
   parsePostResponse,
   checkTallyError,
-  parseRawXml
+  parseRawXml,
+  parseMasterStatistics,
+  parseVoucherStatistics
 } from "./xmlParser.js";
 
 export class TallyClient {
@@ -401,6 +407,26 @@ export class TallyClient {
     const xml = buildPostXml("EmployeeGroup", employeeGroups, options);
     const resp = await this.sendRequest(xml, "Post Employee Groups");
     return parsePostResponse(resp);
+  }
+
+  /**
+   * Fetches Master Statistics (number of groups, ledgers, etc.)
+   * Uses TDL Report approach to avoid crashing Tally with COMPUTE on native collections.
+   */
+  public async getMasterStatistics(options: RequestOptions = {}): Promise<MasterStatistics[]> {
+    const xml = buildMasterStatisticsXml(options);
+    const resp = await this.sendRequest(xml, "Get Master Statistics");
+    return parseMasterStatistics(resp);
+  }
+
+  /**
+   * Fetches Voucher Statistics (voucher count details by type)
+   * Uses TDL Report approach to avoid crashing Tally with COMPUTE on native collections.
+   */
+  public async getVoucherStatistics(options: RequestOptions = {}): Promise<VoucherStatistics[]> {
+    const xml = buildVoucherStatisticsXml(options);
+    const resp = await this.sendRequest(xml, "Get Voucher Statistics");
+    return parseVoucherStatistics(resp);
   }
 }
 export default TallyClient;

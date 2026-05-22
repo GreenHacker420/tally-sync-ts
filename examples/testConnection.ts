@@ -56,6 +56,33 @@ async function main() {
       })));
     }
 
+    console.log("\nFetching Master Statistics...");
+    const masterStats = await client.getMasterStatistics({ company: activeCompany });
+    if (masterStats.length === 0) {
+      console.log("ℹ No Master Statistics found.");
+    } else {
+      console.log(`✅ Successfully retrieved ${masterStats.length} Master Counts:`);
+      console.table(masterStats.map(stat => ({
+        "Master Type": stat.name,
+        "Total Count": stat.count,
+      })));
+    }
+
+    console.log("\nFetching Voucher Statistics...");
+    const voucherStats = await client.getVoucherStatistics({ company: activeCompany });
+    if (voucherStats.length === 0) {
+      console.log("ℹ No Voucher Statistics found.");
+    } else {
+      console.log(`✅ Successfully retrieved ${voucherStats.length} Voucher Counts:`);
+      console.table(voucherStats.map(stat => ({
+        "Voucher Type": stat.name,
+        "Period Count": stat.count,
+        "Cancelled": stat.cancelledCount,
+        "Optional": stat.optionalCount,
+        "Total Count": stat.totalCount,
+      })));
+    }
+
   } catch (err: any) {
     console.error("❌ Error performing operations:", err.message);
   }

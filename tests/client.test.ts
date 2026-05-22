@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml } from "../src/xmlBuilder.js";
-import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError } from "../src/xmlParser.js";
+import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, buildMasterStatisticsXml, buildVoucherStatisticsXml } from "../src/xmlBuilder.js";
+import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics } from "../src/xmlParser.js";
 import { Ledger, Group, Voucher } from "../src/types.js";
 
 test("XML Builder - escapeXml", () => {
@@ -389,3 +389,126 @@ test("XML Parser - Export Collection Unit, StockGroup, StockItem, Employee", () 
   assert.strictEqual(employees[0].emailId, "john@acme.com");
   assert.strictEqual(employees[0].showOpeningBal, true);
 });
+
+test("XML Builder - Master Statistics uses TDL Report", () => {
+  const masterXml = buildMasterStatisticsXml();
+  assert.ok(masterXml.includes("<TYPE>DATA</TYPE>"));
+  assert.ok(masterXml.includes("<ID>TC_MasterStatisticsReport</ID>"));
+  assert.ok(masterXml.includes('<REPORT NAME="TC_MasterStatisticsReport">'));
+  assert.ok(masterXml.includes('<PART NAME="TC_MasterStatisticsReport">'));
+  assert.ok(masterXml.includes("<REPEAT>TC_MasterStatisticsReport : STATObjects</REPEAT>"));
+  assert.ok(masterXml.includes('<FIELD NAME="TC_MSCount">'));
+  assert.ok(masterXml.includes("<SET>if $$ISEMPTY:$StatVal then 0 else $StatVal</SET>"));
+  assert.ok(!masterXml.includes("TC_STATObjectsCollection"));
+});
+
+test("XML Builder - Voucher Statistics uses TDL Report", () => {
+  const voucherXml = buildVoucherStatisticsXml();
+  assert.ok(voucherXml.includes("<TYPE>DATA</TYPE>"));
+  assert.ok(voucherXml.includes("<ID>TC_VoucherStatisticsReport</ID>"));
+  assert.ok(voucherXml.includes('<REPORT NAME="TC_VoucherStatisticsReport">'));
+  assert.ok(voucherXml.includes("<REPEAT>TC_VoucherStatisticsReport : STATVchType</REPEAT>"));
+  assert.ok(voucherXml.includes('<FIELD NAME="TC_VSCount">'));
+  assert.ok(voucherXml.includes('<FIELD NAME="TC_VSCancelledCount">'));
+  assert.ok(voucherXml.includes('<FIELD NAME="TC_VSTotalCount">'));
+  assert.ok(voucherXml.includes('<FIELD NAME="TC_VSOptionalCount">'));
+  assert.ok(!voucherXml.includes("TC_STATVchTypeCollection"));
+});
+
+
+test("XML Parser - Master Statistics from TDL Report", () => {
+  const xml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <TC_MASTERSTATISTICSREPORT>
+            <NAME>Ledgers</NAME>
+            <COUNT>120</COUNT>
+          </TC_MASTERSTATISTICSREPORT>
+          <TC_MASTERSTATISTICSREPORT>
+            <NAME>Groups</NAME>
+            <COUNT>28</COUNT>
+          </TC_MASTERSTATISTICSREPORT>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  const masterStats = parseMasterStatistics(xml);
+  assert.strictEqual(masterStats.length, 2);
+  assert.strictEqual(masterStats[0].name, "Ledgers");
+  assert.strictEqual(masterStats[0].count, 120);
+  assert.strictEqual(masterStats[1].name, "Groups");
+  assert.strictEqual(masterStats[1].count, 28);
+});
+
+test("XML Parser - Master Statistics from TDL Report (Direct Envelope)", () => {
+  const xml = `
+    <ENVELOPE>
+      <TC_MASTERSTATISTICSREPORT>
+        <NAME>Ledgers</NAME>
+        <COUNT>120</COUNT>
+      </TC_MASTERSTATISTICSREPORT>
+      <TC_MASTERSTATISTICSREPORT>
+        <NAME>Groups</NAME>
+        <COUNT>28</COUNT>
+      </TC_MASTERSTATISTICSREPORT>
+    </ENVELOPE>
+  `;
+
+  const masterStats = parseMasterStatistics(xml);
+  assert.strictEqual(masterStats.length, 2);
+  assert.strictEqual(masterStats[0].name, "Ledgers");
+  assert.strictEqual(masterStats[0].count, 120);
+  assert.strictEqual(masterStats[1].name, "Groups");
+  assert.strictEqual(masterStats[1].count, 28);
+});
+
+test("XML Parser - Voucher Statistics from TDL Report", () => {
+  const xml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <TC_VOUCHERSTATISTICSREPORT>
+            <NAME>Sales</NAME>
+            <COUNT>450</COUNT>
+            <CANCELLEDCOUNT>5</CANCELLEDCOUNT>
+            <TOTALCOUNT>455</TOTALCOUNT>
+            <OPTIONALCOUNT>2</OPTIONALCOUNT>
+          </TC_VOUCHERSTATISTICSREPORT>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  const voucherStats = parseVoucherStatistics(xml);
+  assert.strictEqual(voucherStats.length, 1);
+  assert.strictEqual(voucherStats[0].name, "Sales");
+  assert.strictEqual(voucherStats[0].count, 450);
+  assert.strictEqual(voucherStats[0].cancelledCount, 5);
+  assert.strictEqual(voucherStats[0].totalCount, 455);
+  assert.strictEqual(voucherStats[0].optionalCount, 2);
+});
+
+test("XML Parser - Voucher Statistics from TDL Report (Direct Envelope)", () => {
+  const xml = `
+    <ENVELOPE>
+      <TC_VOUCHERSTATISTICSREPORT>
+        <NAME>Sales</NAME>
+        <COUNT>450</COUNT>
+        <CANCELLEDCOUNT>5</CANCELLEDCOUNT>
+        <TOTALCOUNT>455</TOTALCOUNT>
+        <OPTIONALCOUNT>2</OPTIONALCOUNT>
+      </TC_VOUCHERSTATISTICSREPORT>
+    </ENVELOPE>
+  `;
+
+  const voucherStats = parseVoucherStatistics(xml);
+  assert.strictEqual(voucherStats.length, 1);
+  assert.strictEqual(voucherStats[0].name, "Sales");
+  assert.strictEqual(voucherStats[0].count, 450);
+  assert.strictEqual(voucherStats[0].cancelledCount, 5);
+  assert.strictEqual(voucherStats[0].totalCount, 455);
+  assert.strictEqual(voucherStats[0].optionalCount, 2);
+});
+

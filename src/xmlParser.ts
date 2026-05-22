@@ -16,7 +16,9 @@ import {
   Godown,
   StockItem,
   Employee,
-  EmployeeGroup
+  EmployeeGroup,
+  MasterStatistics,
+  VoucherStatistics
 } from "./types.js";
 
 // Setup XML parser with optimized configurations
@@ -65,6 +67,10 @@ const xmlParser = new XMLParser({
       "MULTICOMPONENTLIST.LIST",
       "MULTICOMPONENTITEMLIST.LIST",
       "MAILINGNAME.LIST",
+      "STATOBJECTS",
+      "STATVCHTYPE",
+      "TC_MASTERSTATISTICSREPORT",
+      "TC_VOUCHERSTATISTICSREPORT",
     ].includes(name);
   },
 });
@@ -266,6 +272,8 @@ export function parseExportCollection<T>(
   if (type === "Employee" || type === "EmployeeGroup") {
     xmlTagName = "COSTCENTRE";
   }
+  
+  // collection elements are always arrays because we registered them in isArray
   const rawList = collection[xmlTagName] || [];
   
   return rawList.map((item: any) => {
@@ -957,4 +965,47 @@ export function parsePostResponse(xml: string): PostResponse[] {
     message: msg,
     masterId: lastVchId,
   }];
+}
+
+/**
+ * Parses Master Statistics from a TDL Report response.
+ * The report response wraps each item in a TC_MASTERSTATISTICSREPORT tag.
+ */
+export function parseMasterStatistics(xml: string): MasterStatistics[] {
+  const parsed = parseRawXml(xml);
+  const envelope = parsed?.ENVELOPE;
+  if (!envelope) return [];
+
+  const rawList = envelope["TC_MASTERSTATISTICSREPORT"] || envelope?.BODY?.DATA?.["TC_MASTERSTATISTICSREPORT"] || [];
+  const items = Array.isArray(rawList) ? rawList : [rawList];
+
+  return items
+    .filter((item: any) => item && item.NAME !== undefined)
+    .map((item: any) => ({
+      name: String(getSingleValue(item.NAME) || ""),
+      count: parseTallyNumeric(item.COUNT) || 0,
+    }));
+}
+
+/**
+ * Parses Voucher Statistics from a TDL Report response.
+ * The report response wraps each item in a TC_VOUCHERSTATISTICSREPORT tag.
+ */
+export function parseVoucherStatistics(xml: string): VoucherStatistics[] {
+  const parsed = parseRawXml(xml);
+  const envelope = parsed?.ENVELOPE;
+  if (!envelope) return [];
+
+  const rawList = envelope["TC_VOUCHERSTATISTICSREPORT"] || envelope?.BODY?.DATA?.["TC_VOUCHERSTATISTICSREPORT"] || [];
+  const items = Array.isArray(rawList) ? rawList : [rawList];
+
+  return items
+    .filter((item: any) => item && item.NAME !== undefined)
+    .map((item: any) => ({
+      name: String(getSingleValue(item.NAME) || ""),
+      count: parseTallyNumeric(item.COUNT) || 0,
+      cancelledCount: parseTallyNumeric(item.CANCELLEDCOUNT) || 0,
+      totalCount: parseTallyNumeric(item.TOTALCOUNT) || 0,
+      optionalCount: parseTallyNumeric(item.OPTIONALCOUNT) || 0,
+    }));
 }
