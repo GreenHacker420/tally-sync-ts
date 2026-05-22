@@ -4,6 +4,7 @@
   "description": "Simple, efficient, and typed connector for Tally XML API in TypeScript",
   "main": "dist/index.js",
   "type": "module",
+  "auther":"GreenHacker",
   "scripts": {
     "build": "tsc",
     "test": "node --import tsx --test tests/**/*.test.ts",
