@@ -6,10 +6,10 @@ import {
   Ledger,
   Group,
   Voucher,
+  Company,
   CostCentre,
   CostCategory,
   VoucherType,
-  Company,
   Unit,
   StockGroup,
   StockCategory,
@@ -18,7 +18,10 @@ import {
   Employee,
   EmployeeGroup,
   MasterStatistics,
-  VoucherStatistics
+  VoucherStatistics,
+  Currency,
+  PeriodicVoucherStat,
+  AutoColVoucherTypeStat
 } from "./types.js";
 
 // Setup XML parser with optimized configurations
@@ -68,9 +71,12 @@ const xmlParser = new XMLParser({
       "MULTICOMPONENTITEMLIST.LIST",
       "MAILINGNAME.LIST",
       "STATOBJECTS",
-      "STATVCHTYPE",
+      "STATVchType",
       "TC_MASTERSTATISTICSREPORT",
       "TC_VOUCHERSTATISTICSREPORT",
+      "CURRENCY",
+      "VCHTYPESTAT",
+      "PERIODSTAT",
     ].includes(name);
   },
 });
@@ -262,7 +268,7 @@ export function parseLastAlterIds(xml: string): LastAlterIds {
  */
 export function parseExportCollection<T>(
   xml: string,
-  type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup"
+  type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency"
 ): T[] {
   const parsed = parseRawXml(xml);
   const collection = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION;
@@ -928,6 +934,9 @@ export function parseExportCollection<T>(
       if ((!base.name || base.name === "undefined") && base.languageNameList?.[0]?.names?.[0]) {
         base.name = base.languageNameList[0].names[0];
       }
+    } else if (type === "Currency") {
+      base.name = item.ORIGINALNAME ? String(getSingleValue(item.ORIGINALNAME)) : (item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : ""));
+      base.formalName = getSingleValue(item.MAILINGNAME);
     }
 
     return base as T;
@@ -1008,4 +1017,60 @@ export function parseVoucherStatistics(xml: string): VoucherStatistics[] {
       totalCount: parseTallyNumeric(item.TOTALCOUNT) || 0,
       optionalCount: parseTallyNumeric(item.OPTIONALCOUNT) || 0,
     }));
+}
+
+/**
+ * Parses the count response from a count request.
+ */
+export function parseCountResponse(xml: string): number {
+  const parsed = parseRawXml(xml);
+  const envelope = parsed?.ENVELOPE;
+  if (!envelope) return 0;
+
+  // Inspect direct fields or inside BODY.DATA (just in case)
+  const directCount = envelope.TC_TOTALCOUNT ?? envelope.TC_TotalCount ?? envelope.TOTALCOUNT ?? envelope.COUNT;
+  if (directCount !== undefined) {
+    return parseTallyNumeric(directCount) || 0;
+  }
+
+  const dataCount = envelope.BODY?.DATA?.TC_TOTALCOUNT ?? envelope.BODY?.DATA?.TC_TotalCount ?? envelope.BODY?.DATA?.TOTALCOUNT ?? envelope.BODY?.DATA?.COUNT;
+  if (dataCount !== undefined) {
+    return parseTallyNumeric(dataCount) || 0;
+  }
+
+  return 0;
+}
+
+/**
+ * Parses AutoColumn Voucher Statistics from a TDL Report response.
+ */
+export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeStat[] {
+  const parsed = parseRawXml(xml);
+  const envelope = parsed?.ENVELOPE;
+  if (!envelope) return [];
+
+  // VCHTYPESTAT could be directly under ENVELOPE or under BODY.DATA depending on Tally response structure
+  const rawList = envelope["VCHTYPESTAT"] || envelope?.BODY?.DATA?.["VCHTYPESTAT"] || [];
+  const items = Array.isArray(rawList) ? rawList : [rawList];
+
+  return items
+    .filter((item: any) => item && item.NAME !== undefined)
+    .map((item: any) => {
+      const rawPeriodStats = item.PERIODSTAT || [];
+      const periodStatsList = Array.isArray(rawPeriodStats) ? rawPeriodStats : [rawPeriodStats];
+
+      const periodStats: PeriodicVoucherStat[] = periodStatsList.map((ps: any) => ({
+        fromDate: String(getSingleValue(ps.FROMDATE) || ""),
+        toDate: String(getSingleValue(ps.TODATE) || ""),
+        cancelledCount: parseTallyNumeric(ps.CANCELLEDCOUNT) || 0,
+        optionalCount: parseTallyNumeric(ps.OTIONALCOUNT) || 0,
+        totalCount: parseTallyNumeric(ps.TOTALCOUNT) || 0,
+      }));
+
+      return {
+        name: String(getSingleValue(item.NAME) || ""),
+        totalCount: parseTallyNumeric(item.TOTALCOUNT) || 0,
+        periodStats,
+      };
+    });
 }

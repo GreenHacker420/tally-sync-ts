@@ -494,3 +494,24 @@ export interface VoucherStatistics {
   optionalCount: number;
 }
 
+export interface Currency extends TallyObject {
+  name: string; // Maps to ORIGINALNAME
+  formalName?: string; // Maps to MAILINGNAME
+}
+
+export type Periodicity = "Day" | "Week" | "Fortnight" | "Month" | "Three Month" | "Six Month" | "Year";
+
+export interface PeriodicVoucherStat {
+  fromDate: string;
+  toDate: string;
+  cancelledCount: number;
+  optionalCount: number;
+  totalCount: number;
+}
+
+export interface AutoColVoucherTypeStat {
+  name: string;
+  totalCount: number;
+  periodStats: PeriodicVoucherStat[];
+}
+

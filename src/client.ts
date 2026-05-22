@@ -21,7 +21,10 @@ import {
   Employee,
   EmployeeGroup,
   MasterStatistics,
-  VoucherStatistics
+  VoucherStatistics,
+  Currency,
+  Periodicity,
+  AutoColVoucherTypeStat
 } from "./types.js";
 import {
   buildExportCollectionXml,
@@ -30,7 +33,9 @@ import {
   buildLastAlterIdsRequestXml,
   buildPostXml,
   buildMasterStatisticsXml,
-  buildVoucherStatisticsXml
+  buildVoucherStatisticsXml,
+  buildCountRequestXml,
+  buildPeriodicVoucherStatisticsXml
 } from "./xmlBuilder.js";
 import {
   parseActiveCompany,
@@ -41,7 +46,9 @@ import {
   checkTallyError,
   parseRawXml,
   parseMasterStatistics,
-  parseVoucherStatistics
+  parseVoucherStatistics,
+  parseCountResponse,
+  parsePeriodicVoucherStatistics
 } from "./xmlParser.js";
 
 export class TallyClient {
@@ -269,6 +276,24 @@ export class TallyClient {
   }
 
   /**
+   * Fetches Currencies
+   */
+  public async getCurrencies(options: PaginatedRequestOptions = {}): Promise<Currency[]> {
+    const xml = buildExportCollectionXml("Currency", options);
+    const resp = await this.sendRequest(xml, "Get Currencies");
+    return parseExportCollection<Currency>(resp, "Currency");
+  }
+
+  /**
+   * Creates or Alters Currencies in Tally
+   */
+  public async postCurrencies(currencies: Currency[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
+    const xml = buildPostXml("Currency", currencies, options);
+    const resp = await this.sendRequest(xml, "Post Currencies");
+    return parsePostResponse(resp);
+  }
+
+  /**
    * Fetches Units
    */
   public async getUnits(options: PaginatedRequestOptions = {}): Promise<Unit[]> {
@@ -427,6 +452,27 @@ export class TallyClient {
     const xml = buildVoucherStatisticsXml(options);
     const resp = await this.sendRequest(xml, "Get Voucher Statistics");
     return parseVoucherStatistics(resp);
+  }
+
+  /**
+   * Gets the dynamic total count of objects in a specific collection
+   */
+  public async getObjectsCount(collectionType: string, options: RequestOptions = {}): Promise<number> {
+    const xml = buildCountRequestXml(collectionType, options);
+    const resp = await this.sendRequest(xml, "Get Objects Count");
+    return parseCountResponse(resp);
+  }
+
+  /**
+   * Fetches Periodic Voucher Statistics with auto-column support
+   */
+  public async getPeriodicVoucherStatistics(
+    periodicity: Periodicity,
+    options: RequestOptions = {}
+  ): Promise<AutoColVoucherTypeStat[]> {
+    const xml = buildPeriodicVoucherStatisticsXml(periodicity, options);
+    const resp = await this.sendRequest(xml, "Get Periodic Voucher Statistics");
+    return parsePeriodicVoucherStatistics(resp);
   }
 }
 export default TallyClient;

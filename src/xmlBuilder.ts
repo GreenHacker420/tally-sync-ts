@@ -18,7 +18,9 @@ import {
   Employee,
   EmployeeGroup,
   GSTDetail,
-  HSNDetail
+  HSNDetail,
+  Currency,
+  Periodicity
 } from "./types.js";
 import { DEFAULT_TDL_FUNCTIONS } from "./constants.js";
 
@@ -1138,11 +1140,20 @@ function employeeGroupToXml(eg: EmployeeGroup): string {
   return costCentreToXml(eg);
 }
 
+function currencyToXml(cur: Currency): string {
+  const action = cur.masterId ? "Alter" : "Create";
+  return `
+  <CURRENCY NAME="${escapeXml(cur.name)}" ACTION="${action}">
+    <ORIGINALNAME>${escapeXml(cur.name)}</ORIGINALNAME>
+    ${cur.formalName ? `<MAILINGNAME>${escapeXml(cur.formalName)}</MAILINGNAME>` : ""}
+  </CURRENCY>`;
+}
+
 /**
  * Builds the POST XML wrapper for importing multiple Masters/Vouchers into Tally
  */
 export function buildPostXml(
-  type: "Ledger" | "Group" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Company" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup",
+  type: "Ledger" | "Group" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Company" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency",
   objects: any[],
   options: PostRequestOptions = {}
 ): string {
@@ -1175,6 +1186,8 @@ export function buildPostXml(
     innerXml = objects.map(o => employeeToXml(o)).join("");
   } else if (type === "EmployeeGroup") {
     innerXml = objects.map(o => employeeGroupToXml(o)).join("");
+  } else if (type === "Currency") {
+    innerXml = objects.map(o => currencyToXml(o)).join("");
   }
 
   return `<?xml version="1.0" encoding="utf-8"?>
@@ -1198,6 +1211,213 @@ export function buildPostXml(
         ${innerXml}
       </TALLYMESSAGE>
     </DATA>
+  </BODY>
+</ENVELOPE>`;
+}
+
+function getPeriodicityValue(p: Periodicity): string {
+  switch (p) {
+    case "Month": return "Month";
+    case "Day": return "Day";
+    case "Week": return "Week";
+    case "Fortnight": return "Fortnight";
+    case "Three Month": return "3 Month";
+    case "Six Month": return "6 Month";
+    case "Year": return "Year";
+    default: return "Month";
+  }
+}
+
+/**
+ * Builds the XML to dynamically retrieve the exact item count of a collection.
+ */
+export function buildCountRequestXml(
+  collectionType: string,
+  options: RequestOptions = {}
+): string {
+  const reportName = "TC_CountReport";
+  const collectionName = `TC_${collectionType}Collection`;
+  const fromDate = formatDateForTally(options.fromDate);
+  const toDate = formatDateForTally(options.toDate);
+
+  // Generate TDL filters and system declarations
+  const filterTags = options.filters ? options.filters.map(f => `<FILTERS>${escapeXml(f.name)}</FILTERS>`).join("\n") : "";
+  const systemFilters = options.filters
+    ? options.filters.map(f => `<SYSTEM TYPE="Formulae" NAME="${escapeXml(f.name)}">${escapeXml(f.formula)}</SYSTEM>`).join("\n")
+    : "";
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>${reportName}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        ${options.company ? `<SVCURRENTCOMPANY>${escapeXml(options.company)}</SVCURRENTCOMPANY>` : ""}
+        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
+        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="${reportName}">
+            <FORMS>${reportName}</FORMS>
+          </REPORT>
+          <FORM NAME="${reportName}">
+            <TOPPARTS>${reportName}</TOPPARTS>
+          </FORM>
+          <PART NAME="${reportName}">
+            <TOPLINES>${reportName}</TOPLINES>
+          </PART>
+          <LINE NAME="${reportName}">
+            <FIELDS>TC_CountField</FIELDS>
+          </LINE>
+          <FIELD NAME="TC_CountField">
+            <XMLTAG>TC_TotalCount</XMLTAG>
+            <SET>$$NUMITEMS:${collectionName}</SET>
+          </FIELD>
+          <COLLECTION NAME="${collectionName}" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>${collectionType}</TYPE>
+            ${filterTags}
+          </COLLECTION>
+          ${systemFilters}
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
+/**
+ * Builds XML for auto-column statistical reports showing voucher counts partitioned by date periods.
+ */
+export function buildPeriodicVoucherStatisticsXml(
+  periodicity: Periodicity,
+  options: RequestOptions = {}
+): string {
+  const reportName = "TC_AutoColumnStats";
+  const periodicityVal = getPeriodicityValue(periodicity);
+  const fromDate = formatDateForTally(options.fromDate);
+  const toDate = formatDateForTally(options.toDate);
+
+  const typedOptions = options as any;
+  const filterTag = typedOptions.voucherType ? `<FILTERS>TC_VchTypeFilter</FILTERS>` : "";
+  const systemFilter = typedOptions.voucherType
+    ? `<SYSTEM TYPE="Formulae" NAME="TC_VchTypeFilter">$Name="${escapeXml(typedOptions.voucherType)}"</SYSTEM>`
+    : "";
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>${reportName}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        ${options.company ? `<SVCURRENTCOMPANY>${escapeXml(options.company)}</SVCURRENTCOMPANY>` : ""}
+        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
+        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="${reportName}">
+            <FORMS>${reportName}</FORMS>
+            <REPEAT> SVFromDate, SVToDate</REPEAT>
+            <VARIABLE>DoSetAutoColumn,SVPeriodicity</VARIABLE>
+            <SET>DoSetAutoColumn:No</SET>
+            <SET>SVPeriodicity:"${periodicityVal}"</SET>
+            <SET>DSPRepeatCollection:"Period Collection"</SET>
+          </REPORT>
+          <FORM NAME="${reportName}">
+            <TOPPARTS>${reportName}</TOPPARTS>
+            <OPTION>TC_SETAUTOOPTION:$$SetAutoColumns:SVFromDATE,SVTODATE</OPTION>
+          </FORM>
+          <FORM NAME="TC_SETAUTOOPTION" ISOPTION="Yes" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+          </FORM>
+          <PART NAME="${reportName}">
+            <TOPLINES>${reportName}</TOPLINES>
+            <REPEAT>${reportName} : TC_VchTypeCollection</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </PART>
+          <LINE NAME="${reportName}">
+            <FIELDS>TC_VchTypeName</FIELDS>
+            <FIELDS>TC_VchTypeTotalCount</FIELDS>
+            <FIELDS>TC_VchTypeCount</FIELDS>
+            <FIELDS>TC_VchTypeOptCount</FIELDS>
+            <FIELDS>TC_VchTypeCancCount</FIELDS>
+            <XMLTAG>VchTypeStat</XMLTAG>
+            <OPTION>TC_AutoColumnStatsRepeat:$MigVal&gt;0</OPTION>
+          </LINE>
+          <LINE NAME="TC_AutoColumnStatsRepeat" ISOPTION="Yes" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <FIELDS>TC_VchTypePeriodStat</FIELDS>
+            <REPEAT>TC_VchTypePeriodStat</REPEAT>
+            <SCROLLED>Vertical</SCROLLED>
+          </LINE>
+          <FIELD NAME="TC_VchTypeName">
+            <XMLTAG>Name</XMLTAG>
+            <SET>$Name</SET>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeTotalCount">
+            <XMLTAG>TotalCount</XMLTAG>
+            <SET>$MigVal</SET>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeCount">
+            <XMLTAG>Count</XMLTAG>
+            <SET>$StatVal</SET>
+          </FIELD>
+          <FIELD NAME="TC_VchTypePeriodStat">
+            <XMLTAG>PeriodStat</XMLTAG>
+            <FIELDS>TC_VchTypeFromDate</FIELDS>
+            <FIELDS>TC_VchTypeToDate</FIELDS>
+            <FIELDS>TC_VchTypeCancCount</FIELDS>
+            <FIELDS>TC_VchTypeOptCount</FIELDS>
+            <FIELDS>TC_VchTypeTotalPeriodCount</FIELDS>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeFromDate">
+            <XMLTAG>FromDate</XMLTAG>
+            <SET>$$TC_TransformDateToXSD:##SVFromDate</SET>
+            <INVISIBLE>$$ISEmpty:$$value</INVISIBLE>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeToDate">
+            <XMLTAG>ToDate</XMLTAG>
+            <SET>$$TC_TransformDateToXSD:##SVToDate</SET>
+            <USE>$$ISEmpty:$$value</USE>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeTotalPeriodCount">
+            <XMLTAG>TotalCount</XMLTAG>
+            <SET>$StatVal</SET>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeOptCount">
+            <XMLTAG>OtionalCount</XMLTAG>
+            <SET>$$DirectOptionalVch:$Name</SET>
+          </FIELD>
+          <FIELD NAME="TC_VchTypeCancCount">
+            <XMLTAG>CancelledCount</XMLTAG>
+            <SET>$CancVal</SET>
+          </FIELD>
+          <COLLECTION NAME="TC_VchTypeCollection" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>VoucherTypes</TYPE>
+            ${filterTag}
+          </COLLECTION>
+          ${systemFilter}
+          ${DEFAULT_TDL_FUNCTIONS.map(f => `
+          <FUNCTION NAME="${f.name}">
+            ${f.parameters.map(p => `<Parameter>${escapeXml(p)}</Parameter>`).join("")}
+            ${f.variables ? f.variables.map(v => `<VARIABLES>${escapeXml(v)}</VARIABLES>`).join("") : ""}
+            <Returns>${f.returns}</Returns>
+            ${f.actions.map(a => `<Action>${escapeXml(a)}</Action>`).join("")}
+          </FUNCTION>`).join("\n")}
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>`;
 }

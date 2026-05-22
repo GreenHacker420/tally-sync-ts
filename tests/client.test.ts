@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, buildMasterStatisticsXml, buildVoucherStatisticsXml } from "../src/xmlBuilder.js";
-import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics } from "../src/xmlParser.js";
-import { Ledger, Group, Voucher } from "../src/types.js";
+import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, buildMasterStatisticsXml, buildVoucherStatisticsXml, buildCountRequestXml, buildPeriodicVoucherStatisticsXml } from "../src/xmlBuilder.js";
+import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics, parseCountResponse, parsePeriodicVoucherStatistics } from "../src/xmlParser.js";
+import { Ledger, Group, Voucher, Currency } from "../src/types.js";
 
 test("XML Builder - escapeXml", () => {
   assert.strictEqual(escapeXml("Sales & Services"), "Sales &amp; Services");
@@ -510,5 +510,125 @@ test("XML Parser - Voucher Statistics from TDL Report (Direct Envelope)", () => 
   assert.strictEqual(voucherStats[0].cancelledCount, 5);
   assert.strictEqual(voucherStats[0].totalCount, 455);
   assert.strictEqual(voucherStats[0].optionalCount, 2);
+});
+
+test("XML Builder & Parser - Currency Master", () => {
+  const currencies: Currency[] = [
+    { name: "$", formalName: "US Dollars" },
+  ];
+  const postXml = buildPostXml("Currency", currencies);
+  assert.ok(postXml.includes('<CURRENCY NAME="$" ACTION="Create">'));
+  assert.ok(postXml.includes("<ORIGINALNAME>$</ORIGINALNAME>"));
+  assert.ok(postXml.includes("<MAILINGNAME>US Dollars</MAILINGNAME>"));
+
+  const exportXml = buildExportCollectionXml("Currency");
+  assert.ok(exportXml.includes("<TYPE>Currency</TYPE>"));
+
+  const responseXml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION>
+            <CURRENCY>
+              <ORIGINALNAME>$</ORIGINALNAME>
+              <MAILINGNAME>US Dollar</MAILINGNAME>
+            </CURRENCY>
+            <CURRENCY>
+              <ORIGINALNAME>₹</ORIGINALNAME>
+              <MAILINGNAME>Indian Rupee</MAILINGNAME>
+            </CURRENCY>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+  const parsed = parseExportCollection<Currency>(responseXml, "Currency");
+  assert.strictEqual(parsed.length, 2);
+  assert.strictEqual(parsed[0].name, "$");
+  assert.strictEqual(parsed[0].formalName, "US Dollar");
+  assert.strictEqual(parsed[1].name, "₹");
+  assert.strictEqual(parsed[1].formalName, "Indian Rupee");
+});
+
+test("XML Builder & Parser - Count Request", () => {
+  const xml = buildCountRequestXml("Ledger", { company: "Test Company" });
+  assert.ok(xml.includes("<TYPE>DATA</TYPE>"));
+  assert.ok(xml.includes("<ID>TC_CountReport</ID>"));
+  assert.ok(xml.includes("<SET>$$NUMITEMS:TC_LedgerCollection</SET>"));
+  assert.ok(xml.includes("<SVCURRENTCOMPANY>Test Company</SVCURRENTCOMPANY>"));
+
+  const countXmlDirect = `
+    <ENVELOPE>
+      <TC_TOTALCOUNT>45</TC_TOTALCOUNT>
+    </ENVELOPE>
+  `;
+  assert.strictEqual(parseCountResponse(countXmlDirect), 45);
+
+  const countXmlNested = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <TC_TotalCount>89</TC_TotalCount>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+  assert.strictEqual(parseCountResponse(countXmlNested), 89);
+});
+
+test("XML Builder & Parser - Periodic Voucher Statistics", () => {
+  const xml = buildPeriodicVoucherStatisticsXml("Month", { company: "Test Co" });
+  assert.ok(xml.includes("<TYPE>DATA</TYPE>"));
+  assert.ok(xml.includes("<ID>TC_AutoColumnStats</ID>"));
+  assert.ok(xml.includes('<SET>SVPeriodicity:"Month"</SET>'));
+  assert.ok(xml.includes("<SET>$$TC_TransformDateToXSD:##SVFromDate</SET>"));
+  assert.ok(xml.includes("<SET>$$TC_TransformDateToXSD:##SVToDate</SET>"));
+  assert.ok(xml.includes("<XMLTAG>OtionalCount</XMLTAG>"));
+  assert.ok(xml.includes("<SET>$$DirectOptionalVch:$Name</SET>"));
+
+  const responseXml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <VCHTYPESTAT>
+            <NAME>Sales</NAME>
+            <TOTALCOUNT>25</TOTALCOUNT>
+            <PERIODSTAT>
+              <FROMDATE>2026-04-01</FROMDATE>
+              <TODATE>2026-04-30</TODATE>
+              <CANCELLEDCOUNT>1</CANCELLEDCOUNT>
+              <OTIONALCOUNT>2</OTIONALCOUNT>
+              <TOTALCOUNT>20</TOTALCOUNT>
+            </PERIODSTAT>
+            <PERIODSTAT>
+              <FROMDATE>2026-05-01</FROMDATE>
+              <TODATE>2026-05-31</TODATE>
+              <CANCELLEDCOUNT>0</CANCELLEDCOUNT>
+              <OTIONALCOUNT>0</OTIONALCOUNT>
+              <TOTALCOUNT>5</TOTALCOUNT>
+            </PERIODSTAT>
+          </VCHTYPESTAT>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  const parsed = parsePeriodicVoucherStatistics(responseXml);
+  assert.strictEqual(parsed.length, 1);
+  assert.strictEqual(parsed[0].name, "Sales");
+  assert.strictEqual(parsed[0].totalCount, 25);
+  assert.strictEqual(parsed[0].periodStats.length, 2);
+
+  assert.strictEqual(parsed[0].periodStats[0].fromDate, "2026-04-01");
+  assert.strictEqual(parsed[0].periodStats[0].toDate, "2026-04-30");
+  assert.strictEqual(parsed[0].periodStats[0].cancelledCount, 1);
+  assert.strictEqual(parsed[0].periodStats[0].optionalCount, 2);
+  assert.strictEqual(parsed[0].periodStats[0].totalCount, 20);
+
+  assert.strictEqual(parsed[0].periodStats[1].fromDate, "2026-05-01");
+  assert.strictEqual(parsed[0].periodStats[1].toDate, "2026-05-31");
+  assert.strictEqual(parsed[0].periodStats[1].cancelledCount, 0);
+  assert.strictEqual(parsed[0].periodStats[1].optionalCount, 0);
+  assert.strictEqual(parsed[0].periodStats[1].totalCount, 5);
 });
 
