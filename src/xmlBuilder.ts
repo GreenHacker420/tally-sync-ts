@@ -20,7 +20,8 @@ import {
   GSTDetail,
   HSNDetail,
   Currency,
-  Periodicity
+  Periodicity,
+  GSTRegistration
 } from "./types.js";
 import { DEFAULT_TDL_FUNCTIONS } from "./constants.js";
 
@@ -80,17 +81,56 @@ export function buildExportCollectionXml(
 ): string {
   const collectionName = `TC_${collectionType}Collection`;
   
-  const tallyType = collectionType;
+  const tallyType = options.collectionType || collectionType;
   const finalFetchList = options.fetchList || ["MasterId", "*", "CanDelete"];
   
   const fromDate = formatDateForTally(options.fromDate);
   const toDate = formatDateForTally(options.toDate);
+  const recordsPerPage = options.recordsPerPage || 1000;
+  const pageNum = options.pageNum || 1;
+  const start = recordsPerPage * (pageNum - 1);
+  const paginationEnabled = options.pageNum !== undefined || options.recordsPerPage !== undefined;
+  const nonPaginatedCollectionName = `${collectionName}_NonPaginated`;
 
   // Generate TDL filters and system declarations
-  const filterTags = options.filters ? options.filters.map(f => `<FILTERS>${escapeXml(f.name)}</FILTERS>`).join("\n") : "";
-  const systemFilters = options.filters
-    ? options.filters.map(f => `<SYSTEM TYPE="Formulae" NAME="${escapeXml(f.name)}">${escapeXml(f.formula)}</SYSTEM>`).join("\n")
+  const filters = [...(options.filters || [])];
+  if (paginationEnabled) {
+    filters.push({
+      name: "TC_PaginationFilter",
+      formula: `##vLineIndex <= ${start + recordsPerPage} AND ##vLineIndex > ${start}`,
+    });
+  }
+  const filterTags = filters.map(f => `<FILTERS>${escapeXml(f.name)}</FILTERS>`).join("\n");
+  const systemFilters = filters
+    ? filters.map(f => `<SYSTEM TYPE="Formulae" NAME="${escapeXml(f.name)}">${escapeXml(f.formula)}</SYSTEM>`).join("\n")
     : "";
+  const computeTags = [
+    ...(options.compute || []),
+    ...(paginationEnabled ? ["LineIndex : ##vLineIndex"] : []),
+  ].map(c => `<COMPUTE>${escapeXml(c)}</COMPUTE>`).join("\n");
+  const computeVarTags = [
+    ...(options.computeVar || []),
+    ...(paginationEnabled ? ["vLineIndex: Number : IF $$IsEmpty:##vLineIndex THEN 1 ELSE ##vLineIndex + 1"] : []),
+  ].map(c => `<COMPUTEVAR>${escapeXml(c)}</COMPUTEVAR>`).join("\n");
+  const childOfTag = options.childOf ? `<CHILDOF>${escapeXml(options.childOf)}</CHILDOF>` : "";
+  const belongsToTag = options.belongsTo ? `<BELONGSTO>${options.belongsTo}</BELONGSTO>` : "";
+  const totalCountReportTags = paginationEnabled && !options.disableCountTag ? `
+          <PART NAME="TC_ObjectsCount">
+            <TOPLINES>TC_ObjectsCount</TOPLINES>
+          </PART>
+          <LINE NAME="TC_ObjectsCount">
+            <FIELDS>TC_ObjectsCount</FIELDS>
+          </LINE>
+          <FIELD NAME="TC_ObjectsCount">
+            <XMLTAG>TC_TotalCount</XMLTAG>
+            <SET>$$NUMITEMS:${nonPaginatedCollectionName}</SET>
+          </FIELD>
+          <COLLECTION NAME="${nonPaginatedCollectionName}" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
+            <TYPE>${escapeXml(tallyType)}</TYPE>
+            ${(options.filters || []).map(f => `<FILTERS>${escapeXml(f.name)}</FILTERS>`).join("\n")}
+            ${childOfTag}
+            ${belongsToTag}
+          </COLLECTION>` : "";
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
@@ -108,11 +148,16 @@ export function buildExportCollectionXml(
         ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
         ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
       </STATICVARIABLES>
-      <TDL>
+        <TDL>
         <TDLMESSAGE>
+          ${totalCountReportTags}
           <COLLECTION NAME="${collectionName}" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <TYPE>${tallyType}</TYPE>
+            <TYPE>${escapeXml(tallyType)}</TYPE>
             ${finalFetchList.map(field => `<NATIVEMETHOD>${escapeXml(field)}</NATIVEMETHOD>`).join("\n")}
+            ${computeTags}
+            ${computeVarTags}
+            ${childOfTag}
+            ${belongsToTag}
             ${filterTags}
           </COLLECTION>
           ${systemFilters}
@@ -1149,11 +1194,60 @@ function currencyToXml(cur: Currency): string {
   </CURRENCY>`;
 }
 
+function gstRegistrationToXml(reg: GSTRegistration): string {
+  const action = reg.masterId ? "Alter" : "Create";
+  const languageListXml = reg.languageNameList && reg.languageNameList.length > 0
+    ? reg.languageNameList.map(lang => `
+    <LANGUAGENAME.LIST>
+      <NAME.LIST TYPE="String">
+        ${lang.names.map(n => `<NAME>${escapeXml(n)}</NAME>`).join("")}
+      </NAME.LIST>
+      ${lang.languageId !== undefined ? `<LANGUAGEID>${lang.languageId}</LANGUAGEID>` : ""}
+    </LANGUAGENAME.LIST>`).join("")
+    : `
+    <LANGUAGENAME.LIST>
+      <NAME.LIST TYPE="String">
+        <NAME>${escapeXml(reg.name)}</NAME>
+        ${reg.alias ? `<NAME>${escapeXml(reg.alias)}</NAME>` : ""}
+      </NAME.LIST>
+    </LANGUAGENAME.LIST>`;
+
+  const detailsXml = reg.registrationDetails
+    ? reg.registrationDetails.map(detail => `
+    <GSTREGISTRATIONDETAILS.LIST>
+      ${detail.applicableFrom ? `<FROMDATE>${formatDateForTally(detail.applicableFrom)}</FROMDATE>` : ""}
+      ${detail.gstRegistrationType ? `<REGISTRATIONTYPE>${escapeXml(detail.gstRegistrationType)}</REGISTRATIONTYPE>` : ""}
+      ${detail.state ? `<STATE>${escapeXml(detail.state)}</STATE>` : ""}
+      ${detail.placeOfSupply ? `<PLACEOFSUPPLY>${escapeXml(detail.placeOfSupply)}</PLACEOFSUPPLY>` : ""}
+      ${detail.isOtherTerritoryAssessee !== undefined ? `<ISOTHTERRITORYASSESSEE>${formatBoolForTally(detail.isOtherTerritoryAssessee)}</ISOTHTERRITORYASSESSEE>` : ""}
+      ${detail.isStateCessOn !== undefined ? `<ISSTATECESSON>${formatBoolForTally(detail.isStateCessOn)}</ISSTATECESSON>` : ""}
+    </GSTREGISTRATIONDETAILS.LIST>`).join("")
+    : "";
+
+  return `
+  <GSTREGISTRATION NAME="${escapeXml(reg.name)}" ACTION="${action}">
+    <NAME.LIST>
+      <NAME>${escapeXml(reg.name)}</NAME>
+    </NAME.LIST>
+    ${languageListXml}
+    <STATENAME>${escapeXml(reg.stateName)}</STATENAME>
+    ${reg.priorStateName ? `<PRIORSTATENAME>${escapeXml(reg.priorStateName)}</PRIORSTATENAME>` : ""}
+    ${reg.gstin ? `<GSTREGNUMBER>${escapeXml(reg.gstin)}</GSTREGNUMBER>` : ""}
+    ${reg.eWayApplicableType ? `<EWAYBILLAPPLICABLETYPE>${escapeXml(reg.eWayApplicableType)}</EWAYBILLAPPLICABLETYPE>` : ""}
+    ${reg.gstUserName ? `<GSTNUSERNAME>${escapeXml(reg.gstUserName)}</GSTNUSERNAME>` : ""}
+    ${reg.eSignMethod ? `<ESIGNMETHOD>${escapeXml(reg.eSignMethod)}</ESIGNMETHOD>` : ""}
+    ${reg.isOtherTerritoryAssessee !== undefined ? `<ISOTHTERRITORYASSESSEE>${formatBoolForTally(reg.isOtherTerritoryAssessee)}</ISOTHTERRITORYASSESSEE>` : ""}
+    ${reg.isEwayBillApplicable !== undefined ? `<ISEWAYBILLPRINTAPPLICABLE>${formatBoolForTally(reg.isEwayBillApplicable)}</ISEWAYBILLPRINTAPPLICABLE>` : ""}
+    ${reg.isEwayBillApplicableForIntra !== undefined ? `<ISEWAYBILLAPPLICABLEFORINTRA>${formatBoolForTally(reg.isEwayBillApplicableForIntra)}</ISEWAYBILLAPPLICABLEFORINTRA>` : ""}
+    ${detailsXml}
+  </GSTREGISTRATION>`;
+}
+
 /**
  * Builds the POST XML wrapper for importing multiple Masters/Vouchers into Tally
  */
 export function buildPostXml(
-  type: "Ledger" | "Group" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Company" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency",
+  type: "Ledger" | "Group" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Company" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration",
   objects: any[],
   options: PostRequestOptions = {}
 ): string {
@@ -1188,6 +1282,8 @@ export function buildPostXml(
     innerXml = objects.map(o => employeeGroupToXml(o)).join("");
   } else if (type === "Currency") {
     innerXml = objects.map(o => currencyToXml(o)).join("");
+  } else if (type === "GSTRegistration") {
+    innerXml = objects.map(o => gstRegistrationToXml(o)).join("");
   }
 
   return `<?xml version="1.0" encoding="utf-8"?>
@@ -1237,6 +1333,7 @@ export function buildCountRequestXml(
 ): string {
   const reportName = "TC_CountReport";
   const collectionName = `TC_${collectionType}Collection`;
+  const tallyType = options.collectionType || collectionType;
   const fromDate = formatDateForTally(options.fromDate);
   const toDate = formatDateForTally(options.toDate);
 
@@ -1281,7 +1378,9 @@ export function buildCountRequestXml(
             <SET>$$NUMITEMS:${collectionName}</SET>
           </FIELD>
           <COLLECTION NAME="${collectionName}" ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" ISINTERNAL="No">
-            <TYPE>${collectionType}</TYPE>
+            <TYPE>${escapeXml(tallyType)}</TYPE>
+            ${options.childOf ? `<CHILDOF>${escapeXml(options.childOf)}</CHILDOF>` : ""}
+            ${options.belongsTo ? `<BELONGSTO>${options.belongsTo}</BELONGSTO>` : ""}
             ${filterTags}
           </COLLECTION>
           ${systemFilters}
@@ -1421,4 +1520,3 @@ export function buildPeriodicVoucherStatisticsXml(
   </BODY>
 </ENVELOPE>`;
 }
-

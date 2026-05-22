@@ -39,8 +39,6 @@ export const PERIODICITY = {
   YEAR: "Year",
 } as const;
 
-export type Periodicity = typeof PERIODICITY[keyof typeof PERIODICITY];
-
 // Default TDL dynamic functions used in requests
 export const DEFAULT_TDL_FUNCTIONS = [
   {

@@ -83,6 +83,51 @@ async function main() {
       })));
     }
 
+    console.log("\nFetching Currencies...");
+    const currencies = await client.getCurrencies({
+      company: activeCompany,
+      pageNum: 1,
+      recordsPerPage: 10
+    });
+    if (currencies.length === 0) {
+      console.log("ℹ No Currencies found in this company.");
+    } else {
+      console.log(`✅ Successfully retrieved and parsed ${currencies.length} Currencies:`);
+      console.table(currencies.map(cur => ({
+        ID: cur.masterId,
+        Symbol: cur.name,
+        "Formal Name": cur.formalName || "",
+      })));
+    }
+
+    console.log("\nTesting Dynamic COUNT API (getObjectsCount)...");
+    const ledgerCount = await client.getObjectsCount("Ledger", { company: activeCompany });
+    const stockItemCount = await client.getObjectsCount("StockItem", { company: activeCompany });
+    console.log(`✅ Dynamic Ledger Count: ${ledgerCount}`);
+    console.log(`✅ Dynamic StockItem Count: ${stockItemCount}`);
+
+    console.log("\nFetching Periodic Voucher Statistics (Monthly Breakdown)...");
+    const periodicStats = await client.getPeriodicVoucherStatistics("Month", { company: activeCompany });
+    if (periodicStats.length === 0) {
+      console.log("ℹ No Periodic Voucher Statistics found.");
+    } else {
+      console.log(`✅ Successfully retrieved Periodic Stats for ${periodicStats.length} Voucher Types:`);
+      const flattenedStats = [];
+      for (const vt of periodicStats) {
+        for (const ps of vt.periodStats) {
+          flattenedStats.push({
+            "Voucher Type": vt.name,
+            "From Date": ps.fromDate,
+            "To Date": ps.toDate,
+            "Total Count": ps.totalCount,
+            "Optional": ps.optionalCount,
+            "Cancelled": ps.cancelledCount,
+          });
+        }
+      }
+      console.table(flattenedStats);
+    }
+
   } catch (err: any) {
     console.error("❌ Error performing operations:", err.message);
   }

@@ -4,11 +4,17 @@ export interface RequestOptions {
   toDate?: Date | string;
   filters?: { name: string; formula: string }[];
   fetchList?: string[];
+  compute?: string[];
+  computeVar?: string[];
+  childOf?: string;
+  collectionType?: string;
+  belongsTo?: "Yes" | "No";
 }
 
 export interface PaginatedRequestOptions extends RequestOptions {
   pageNum?: number;
   recordsPerPage?: number;
+  disableCountTag?: boolean;
 }
 
 export interface PostRequestOptions {
@@ -56,6 +62,19 @@ export interface PostResponse {
   message: string;
   masterId?: number;
   alteredId?: number;
+  objectType?: string;
+  name?: string;
+  guid?: string;
+  remoteId?: string;
+  error?: string;
+}
+
+export interface PaginatedResponse<T> {
+  totalCount: number;
+  pageNum: number;
+  recordsPerPage: number;
+  totalPages: number;
+  objects: T[];
 }
 
 // Complex helper interfaces mirroring C# structures
@@ -137,6 +156,28 @@ export interface LedgerGSTRegistrationDetail {
   transporterId?: string;
   isCommonParty?: boolean;
   gstin?: string;
+}
+
+export interface GSTRegistrationDetail {
+  applicableFrom?: Date | string;
+  gstRegistrationType?: string;
+  state?: string;
+  placeOfSupply?: string;
+  isOtherTerritoryAssessee?: boolean;
+  isStateCessOn?: boolean;
+}
+
+export interface GSTRegistration extends BaseAliasedMasterObject {
+  stateName: string;
+  priorStateName?: string;
+  gstin?: string;
+  eWayApplicableType?: string;
+  gstUserName?: string;
+  eSignMethod?: string;
+  isOtherTerritoryAssessee?: boolean;
+  isEwayBillApplicable?: boolean;
+  isEwayBillApplicableForIntra?: boolean;
+  registrationDetails?: GSTRegistrationDetail[];
 }
 
 export interface GSTRateDetail {
@@ -514,4 +555,3 @@ export interface AutoColVoucherTypeStat {
   totalCount: number;
   periodStats: PeriodicVoucherStat[];
 }
-
