@@ -91,6 +91,22 @@ export interface TallyAmount {
   isDebit?: boolean;
 }
 
+export interface TallyQuantity {
+  quantity: number;
+  unit?: string;
+}
+
+export interface TallyRate {
+  rate: number;
+  per?: string;
+  unit?: string;
+}
+
+export interface DueDate {
+  date?: Date | string;
+  text?: string;
+}
+
 export interface LanguageNameList {
   names: string[];
   languageId?: number;
@@ -503,6 +519,9 @@ export interface LedgerEntry {
   ledgerName: string;
   amount: number | TallyAmount;
   isDeemedPositive: boolean;
+  isPartyLedger?: boolean;
+  billAllocations?: BillAllocation[];
+  costCentreAllocations?: CostCentreAllocation[];
 }
 
 export interface InventoryAllocation {
@@ -512,6 +531,62 @@ export interface InventoryAllocation {
   amount: number | TallyAmount;
   isDeemedPositive: boolean;
   ledgers?: LedgerEntry[];
+  billedQuantity?: string | number | TallyQuantity;
+  actualQuantity?: string | number | TallyQuantity;
+  batchAllocations?: VoucherBatchAllocation[];
+  accountingAllocations?: AccountingAllocation[];
+  gstRateDetails?: VoucherGSTRateDetail[];
+}
+
+export interface BillAllocation {
+  name: string;
+  billType?: string;
+  amount: number | TallyAmount;
+  dueDate?: Date | string | DueDate;
+}
+
+export interface CostCentreAllocation {
+  category?: string;
+  name: string;
+  amount: number | TallyAmount;
+}
+
+export interface AccountingAllocation {
+  ledgerName: string;
+  amount: number | TallyAmount;
+  isDeemedPositive?: boolean;
+}
+
+export interface VoucherBatchAllocation {
+  godownName: string;
+  batchName?: string;
+  orderNo?: string;
+  trackingNumber?: string;
+  amount?: number | TallyAmount;
+  actualQuantity?: string | number | TallyQuantity;
+  billedQuantity?: string | number | TallyQuantity;
+  rate?: string | number | TallyRate;
+}
+
+export interface VoucherGSTRateDetail {
+  dutyHead?: string;
+  valuationType?: string;
+  rate?: number;
+}
+
+export interface EWayBillDetails {
+  billNumber?: string;
+  billDate?: Date | string;
+  billStatus?: string;
+  consignorPlace?: string;
+  consignorState?: string;
+  consigneePlace?: string;
+  consigneeState?: string;
+  transporterName?: string;
+  transporterId?: string;
+  distance?: number;
+  vehicleNumber?: string;
+  vehicleType?: string;
 }
 
 export interface Voucher extends TallyObject {
@@ -520,10 +595,24 @@ export interface Voucher extends TallyObject {
   voucherNumber?: string;
   narration?: string;
   reference?: string;
+  referenceDate?: Date | string;
   partyName?: string;
+  partyGSTIN?: string;
+  partyGSTRegistrationType?: string;
+  gstRegistration?: string;
+  placeOfSupply?: string;
+  consigneeName?: string;
+  consigneeGSTIN?: string;
+  consigneeState?: string;
+  voucherGSTClass?: string;
   ledgerEntries?: LedgerEntry[];
   inventoryAllocations?: InventoryAllocation[];
+  allInventoryEntries?: InventoryAllocation[];
+  ewayBillDetails?: EWayBillDetails;
   isInvoice?: boolean;
+  isOptional?: boolean;
+  effectiveDate?: Date | string;
+  viewType?: string;
 }
 
 export interface MasterStatistics {
@@ -559,3 +648,40 @@ export interface AutoColVoucherTypeStat {
   totalCount: number;
   periodStats: PeriodicVoucherStat[];
 }
+
+export type TallyObjectType =
+  | "Ledger"
+  | "Group"
+  | "Company"
+  | "Voucher"
+  | "CostCentre"
+  | "CostCategory"
+  | "VoucherType"
+  | "Unit"
+  | "StockGroup"
+  | "StockCategory"
+  | "Godown"
+  | "StockItem"
+  | "Employee"
+  | "EmployeeGroup"
+  | "Currency"
+  | "GSTRegistration";
+
+export type TallyObjectMap = {
+  Ledger: Ledger;
+  Group: Group;
+  Company: Company;
+  Voucher: Voucher;
+  CostCentre: CostCentre;
+  CostCategory: CostCategory;
+  VoucherType: VoucherType;
+  Unit: Unit;
+  StockGroup: StockGroup;
+  StockCategory: StockCategory;
+  Godown: Godown;
+  StockItem: StockItem;
+  Employee: Employee;
+  EmployeeGroup: EmployeeGroup;
+  Currency: Currency;
+  GSTRegistration: GSTRegistration;
+};

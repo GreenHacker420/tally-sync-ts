@@ -1,148 +1,117 @@
-# tally-sync-ts 🚀
+# tally-sync-ts
 
-[![NPM Version](https://img.shields.io/badge/npm-1.0.0-blue.svg?style=flat-square)](https://www.npmjs.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
+`tally-sync-ts` is a typed TypeScript parser and client for the Tally XML API used by Tally Prime and Tally ERP 9.
 
-**tally-sync-ts** is a high-performance, strictly typed TypeScript connector for the **Tally XML API** (Tally Prime & Tally ERP 9). 
+The C# `TallyConnector` project is used as a behavioral reference for XML tags, request envelopes, and model coverage. This package is intentionally idiomatic TypeScript: explicit typed APIs, reusable parser/build helpers, and generic escape hatches instead of C# source-generator or analyzer internals.
 
-This library serves as a fully optimized port of the popular C# `TallyConnector` library, abstracting the complexities of raw XML construction, escaping, and response mapping. Instead of manipulating XML files, you work directly with fully autocompleted and type-safe TypeScript interfaces!
+## Features
 
----
+- Typed client methods for common masters, vouchers, statistics, counts, pagination, and GST registrations.
+- Raw parser helpers for saved Tally XML responses and fixture files.
+- XML builders for export, import/post, count, pagination, master stats, voucher stats, and periodic voucher stats.
+- Deep voucher support for ledger entries, bill allocations, cost-centre allocations, inventory entries, batch allocations, accounting allocations, GST rate details, and e-way details.
+- Normalization helpers for XML escaping, arrays, dates, booleans, numeric values with `Dr`/`Cr`, and control-character cleanup.
 
-## ✨ Features
-
-- **🎯 Universal Version Parity**: Out-of-the-box compatibility with all major Tally versions, including **Tally Prime (V3, V4, V5, V6, and V7)** as well as **Tally ERP 9**.
-- **🔒 Strong Typing**: Fully comprehensive, high-fidelity TypeScript models for all Tally master records (Ledger, Group, Company, Unit, StockGroup, StockCategory, Godown, Employee, EmployeeGroup) and vouchers.
-- **⚡ High-Performance Architecture**: Uses highly optimized template-based ES6 string builders and the ultra-fast `fast-xml-parser` parsing engine.
-- **🌐 Native Implementation**: Zero external runtime network dependencies—built using native Node.js `fetch` with robust timeout limits via `AbortController`.
-- **🛡️ Multilingual & Alias Parity**: Built-in support for multiple names and aliases (`LANGUAGENAME.LIST` / `NAME.LIST`), robustly handling Tally’s complex array configurations.
-- **🔢 Numeric Normalization**: Built-in format-clearing regex parsers to cleanly convert negative/formatted Tally values (e.g. `2,500.00 Cr` or `-12.50`) into standard JS floats.
-
----
-
-## 📦 Installation
-
-To add the library to your Node.js or TypeScript application:
+## Install
 
 ```bash
 npm install tally-sync-ts
 ```
 
-Ensure your `package.json` specifies `"type": "module"` or that your TypeScript configuration resolves ES modules correctly.
+Use ESM-compatible TypeScript settings, or set `"type": "module"` in your application.
 
----
-
-## 🚀 Getting Started
-
-### 1. Initialize the Client
-Initialize the connection to your local or remote Tally server (default port is `9000`).
+## Client Usage
 
 ```typescript
 import { TallyClient } from "tally-sync-ts";
 
 const client = new TallyClient("http://localhost", 9000);
 
-// Check if Tally Prime is online
 const isOnline = await client.check();
-if (isOnline) {
-  console.log("✅ Tally server is online!");
-}
-```
-
-### 2. Fetch Active Company
-Query Tally to find out which company is currently active.
-
-```typescript
 const company = await client.getActiveCompany();
-console.log(`Active Company: "${company}"`);
+const ledgers = await client.getLedgers({ company });
 ```
 
-### 3. Fetch Master Records with Filtering & Pagination
-Fetch records cleanly using pagination, custom fields retrieval, or custom filters.
+## Parse Raw XML
 
 ```typescript
-// Fetch first 10 Ledgers
-const ledgers = await client.getLedgers({
-  company: company,
-  fetchList: ["MasterId", "Name", "Parent", "OpeningBalance"],
+import { parseExportCollection, type Voucher } from "tally-sync-ts";
+
+const vouchers = parseExportCollection<Voucher>(xmlString, "Voucher");
+console.log(vouchers[0].ledgerEntries?.[0].billAllocations);
+```
+
+## Paginated Fetching
+
+```typescript
+const page = await client.getPaginatedObjects("Ledger", {
+  company,
   pageNum: 1,
-  recordsPerPage: 10
+  recordsPerPage: 100
 });
 
-console.table(ledgers.map(l => ({
-  ID: l.masterId,
-  Name: l.name,
-  ParentGroup: l.group,
-  OpeningBal: l.openingBalance || 0
-})));
+console.log(page.totalCount, page.totalPages, page.objects.length);
 ```
 
-### 4. Fetch Stock Items & Units of Measure
-Retrieve stock information containing structural properties, groups, and base units.
+## Deep Voucher Posting
 
 ```typescript
-// Get Stock Items
-const items = await client.getStockItems({ company });
-console.log(`Found ${items.length} Stock Items.`);
-
-// Get Units
-const units = await client.getUnits({ company });
-console.log(`Found ${units.length} Units of Measure.`);
+await client.postVouchers([{
+  date: "2026-05-21",
+  voucherType: "Sales",
+  voucherNumber: "S-1",
+  partyName: "Acme Customer",
+  partyGSTIN: "27ABCDE1234F1Z5",
+  isInvoice: true,
+  ledgerEntries: [{
+    ledgerName: "Acme Customer",
+    amount: 1180,
+    isDeemedPositive: true,
+    billAllocations: [{ name: "S-1", billType: "New Ref", amount: 1180 }]
+  }],
+  inventoryAllocations: [{
+    stockItemName: "Widget",
+    quantity: "10 pcs",
+    rate: "100/pcs",
+    amount: 1000,
+    isDeemedPositive: false,
+    batchAllocations: [{ godownName: "Main Location", batchName: "B1", amount: 1000 }],
+    accountingAllocations: [{ ledgerName: "Sales", amount: -1000 }]
+  }]
+}], { company });
 ```
 
-### 5. Create or Alter Masters (Posting)
-Post new ledgers, groups, units, or stock items directly to Tally.
+## GST Registrations
 
 ```typescript
-const result = await client.postLedgers([
-  {
-    name: "TC_Demo Customer Ledger",
-    group: "Sundry Debtors",
-    openingBalance: 25000
-  }
-], { company });
+const registrations = await client.getGSTRegistrations({ company });
 
-console.log("Status:", result[0].status); // "success" or "failure"
-console.log("Message:", result[0].message);
+await client.postGSTRegistrations([{
+  name: "Maharashtra GST",
+  stateName: "Maharashtra",
+  gstin: "27ABCDE1234F1Z5",
+  registrationDetails: [{
+    applicableFrom: "2026-04-01",
+    gstRegistrationType: "Regular",
+    state: "Maharashtra",
+    placeOfSupply: "Maharashtra"
+  }]
+}], { company });
 ```
 
----
+## Generic APIs
 
-## 🛠️ C# Parity Mapping
+```typescript
+const groups = await client.getObjects("Group", { company });
+const result = await client.postObjects("Ledger", [{ name: "Demo", group: "Sundry Debtors" }], { company });
+const count = await client.getObjectsCount("Ledger", { company });
+```
 
-### Architecture Comparison
-In the C# `TallyConnector` library, model methods are dynamically compiled at build time using Source Generators (`[GenerateHelperMethod]`). In **tally-sync-ts**, we explicitly implement and type all retrieval and post methods inside the `TallyClient` class, offering optimal IDE autocomplete, easy debugging, and zero compile-time magic dependencies.
+## Tests
 
-### Type/Field Mapping
-All fields undergo standard uppercase-to-camelCase conversion during XML parsing and vice-versa during serialization. Below is the mapping:
-
-| Tally XML Tag | C# Property | TypeScript Field | Type |
-|---|---|---|---|
-| `MASTERID` | `MasterId` | `masterId` | `number` |
-| `ALTERID` | `AlterId` | `alterId` | `number` |
-| `GUID` | `GUID` | `guid` | `string` |
-| `REMOTEALTGUID` | `RemoteId` | `remoteId` | `string` |
-| `LANGUAGENAME.LIST` | `LanguageNameList` | `languageNameList` | `LanguageName[]` |
-
----
-
-## 🧪 Testing
-
-The library includes a native Node.js test runner suite (`node:test`) that requires zero heavy testing frameworks.
-
-To run offline mock unit tests:
 ```bash
 npm test
+npm run build
 ```
 
-To run a live integration script (queries your running Tally port `9000` and displays real company records in formatted tables):
-```bash
-npm run example
-```
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
+The test suite includes mock unit tests and parser checks against C# reference XML fixtures. A live Tally server is not required for the automated tests.

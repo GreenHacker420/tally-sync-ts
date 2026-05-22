@@ -24,6 +24,9 @@ import {
   AutoColVoucherTypeStat,
   GSTRegistration
 } from "./types.js";
+import { asArray, cleanResponseXml, getSingleValue, parseTallyBoolean, parseTallyNumeric } from "./xmlUtils.js";
+
+export { asArray, cleanResponseXml, getSingleValue, parseTallyBoolean, parseTallyNumeric } from "./xmlUtils.js";
 
 // Setup XML parser with optimized configurations
 const xmlParser = new XMLParser({
@@ -36,7 +39,15 @@ const xmlParser = new XMLParser({
     return [
       "OBJECT",
       "ALLLEDGERENTRIES.LIST",
+      "LEDGERENTRIES.LIST",
       "ALLINVENTORYENTRIES.LIST",
+      "INVENTORYENTRIES.LIST",
+      "ACCOUNTINGALLOCATIONS.LIST",
+      "BILLALLOCATIONS.LIST",
+      "CATEGORYALLOCATIONS.LIST",
+      "COSTCENTREALLOCATIONS.LIST",
+      "GSTRATEDETAILS.LIST",
+      "EWAYBILLDETAILS.LIST",
       "NAME.LIST",
       "TALLYMESSAGE",
       "VOUCHER",
@@ -84,13 +95,6 @@ const xmlParser = new XMLParser({
   },
 });
 
-// Helper to clean response XML from Tally (which might have control characters)
-export function cleanResponseXml(xml: string): string {
-  if (!xml) return "";
-  // Strip control chars / garbage that Tally might return in binary/XML boundary
-  return xml.replace(/&#4; /g, "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
-}
-
 /**
  * Parses raw XML into standard JS Object
  */
@@ -119,36 +123,6 @@ export function checkTallyError(parsedObj: any): string | null {
   }
 
   return null;
-}
-
-/**
- * Normalizes Tally objects (e.g. removes lists, handles custom mappings)
- */
-function getSingleValue(val: any): any {
-  if (Array.isArray(val)) {
-    return val[0];
-  }
-  if (val && typeof val === "object") {
-    return val["#text"] ?? val;
-  }
-  return val;
-}
-
-/**
- * Robustly parses a Tally numeric value, stripping formatting and units
- */
-function parseTallyNumeric(val: any): number | undefined {
-  const cleanVal = getSingleValue(val);
-  if (cleanVal === undefined || cleanVal === null) return undefined;
-  if (typeof cleanVal === "number") return cleanVal;
-  const str = String(cleanVal).trim();
-  if (!str) return undefined;
-  // Match optional minus/plus sign followed by digits, commas, and decimal points
-  const match = str.match(/^([+-]?\d[\d,.]*)/);
-  if (!match) return undefined;
-  let parsedStr = match[1].replace(/,/g, "");
-  let num = parseFloat(parsedStr);
-  return isNaN(num) ? undefined : num;
 }
 
 /**
@@ -274,7 +248,8 @@ export function parseExportCollection<T>(
   type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration"
 ): T[] {
   const parsed = parseRawXml(xml);
-  const collection = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION;
+  const envelope = parsed?.ENVELOPE;
+  const collection = envelope?.BODY?.DATA?.COLLECTION || envelope;
   if (!collection) return [];
 
   let xmlTagName = type.toUpperCase();
@@ -283,7 +258,7 @@ export function parseExportCollection<T>(
   }
   
   // collection elements are always arrays because we registered them in isArray
-  const rawList = collection[xmlTagName] || [];
+  const rawList = collection[xmlTagName] || envelope?.BODY?.DATA?.[xmlTagName] || [];
   
   return rawList.map((item: any) => {
     const base: any = {
@@ -672,34 +647,101 @@ export function parseExportCollection<T>(
       base.voucherNumber = getSingleValue(item.VOUCHERNUMBER);
       base.narration = getSingleValue(item.NARRATION);
       base.reference = getSingleValue(item.REFERENCE);
+      base.referenceDate = getSingleValue(item.REFERENCEDATE);
       base.partyName = getSingleValue(item.PARTYLEDGERNAME);
+      base.partyGSTIN = getSingleValue(item.PARTYGSTIN);
+      base.partyGSTRegistrationType = getSingleValue(item.GSTREGISTRATIONTYPE);
+      base.gstRegistration = getSingleValue(item.GSTREGISTRATION);
+      base.placeOfSupply = getSingleValue(item.PLACEOFSUPPLY);
+      base.consigneeName = getSingleValue(item.CONSIGNEENAME);
+      base.consigneeGSTIN = getSingleValue(item.CONSIGNEEGSTIN);
+      base.consigneeState = getSingleValue(item.CONSIGNEESTATENAME);
+      base.voucherGSTClass = getSingleValue(item.VCHGSTCLASS);
+      base.isInvoice = parseTallyBoolean(item.ISINVOICE);
+      base.isOptional = parseTallyBoolean(item.ISOPTIONAL);
+      base.effectiveDate = getSingleValue(item.EFFECTIVEDATE);
+      base.viewType = getSingleValue(item.VOUCHERVIEWTYPE);
+
+      if (item["EWAYBILLDETAILS.LIST"]) {
+        const eway = asArray(item["EWAYBILLDETAILS.LIST"])[0] as any;
+        base.ewayBillDetails = {
+          billNumber: getSingleValue(eway.BILLNUMBER),
+          billDate: getSingleValue(eway.BILLDATE),
+          billStatus: getSingleValue(eway.BILLSTATUS),
+          consignorPlace: getSingleValue(eway.CONSIGNORPLACE),
+          consignorState: getSingleValue(eway.CONSIGNORSTATE),
+          consigneePlace: getSingleValue(eway.CONSIGNEEPLACE),
+          consigneeState: getSingleValue(eway.CONSIGNEESTATE),
+          transporterName: getSingleValue(eway.TRANSPORTERNAME),
+          transporterId: getSingleValue(eway.TRANSPORTERID),
+          distance: parseTallyNumeric(eway.DISTANCE),
+          vehicleNumber: getSingleValue(eway.VEHICLENUMBER),
+          vehicleType: getSingleValue(eway.VEHICLETYPE),
+        };
+      }
 
       // Parse Ledger Entries
-      if (item["ALLLEDGERENTRIES.LIST"]) {
-        const rawEntries = Array.isArray(item["ALLLEDGERENTRIES.LIST"])
-          ? item["ALLLEDGERENTRIES.LIST"]
-          : [item["ALLLEDGERENTRIES.LIST"]];
+      const ledgerEntriesNode = item["ALLLEDGERENTRIES.LIST"] || item["LEDGERENTRIES.LIST"];
+      if (ledgerEntriesNode) {
+        const rawEntries = asArray(ledgerEntriesNode);
         
         base.ledgerEntries = rawEntries.map((e: any) => ({
           ledgerName: String(getSingleValue(e.LEDGERNAME)),
           amount: parseTallyNumeric(e.AMOUNT) ?? 0,
-          isDeemedPositive: String(getSingleValue(e.ISDEEMEDPOSITIVE)) === "Yes",
+          isDeemedPositive: parseTallyBoolean(e.ISDEEMEDPOSITIVE) ?? false,
+          isPartyLedger: parseTallyBoolean(e.ISPARTYLEDGER),
+          billAllocations: e["BILLALLOCATIONS.LIST"] ? asArray(e["BILLALLOCATIONS.LIST"]).map((b: any) => ({
+            name: String(getSingleValue(b.NAME) || ""),
+            billType: getSingleValue(b.BILLTYPE),
+            amount: parseTallyNumeric(b.AMOUNT) ?? 0,
+            dueDate: getSingleValue(b.BILLCREDITPERIOD),
+          })) : undefined,
+          costCentreAllocations: e["CATEGORYALLOCATIONS.LIST"] ? asArray(e["CATEGORYALLOCATIONS.LIST"]).flatMap((cat: any) => {
+            const category = getSingleValue(cat.CATEGORY);
+            return asArray(cat["COSTCENTREALLOCATIONS.LIST"]).map((cc: any) => ({
+              category,
+              name: String(getSingleValue(cc.NAME) || ""),
+              amount: parseTallyNumeric(cc.AMOUNT) ?? 0,
+            }));
+          }) : undefined,
         }));
       }
 
       // Parse Inventory Entries
-      if (item["ALLINVENTORYENTRIES.LIST"]) {
-        const rawInv = Array.isArray(item["ALLINVENTORYENTRIES.LIST"])
-          ? item["ALLINVENTORYENTRIES.LIST"]
-          : [item["ALLINVENTORYENTRIES.LIST"]];
+      const inventoryEntriesNode = item["ALLINVENTORYENTRIES.LIST"] || item["INVENTORYENTRIES.LIST"];
+      if (inventoryEntriesNode) {
+        const rawInv = asArray(inventoryEntriesNode);
         
         base.inventoryAllocations = rawInv.map((inv: any) => ({
           stockItemName: String(getSingleValue(inv.STOCKITEMNAME)),
-          quantity: getSingleValue(inv.ACTUALQUANTITY),
+          quantity: getSingleValue(inv.ACTUALQUANTITY ?? inv.BILLEDQUANTITY),
+          actualQuantity: getSingleValue(inv.ACTUALQUANTITY),
+          billedQuantity: getSingleValue(inv.BILLEDQUANTITY),
           rate: getSingleValue(inv.RATE),
           amount: parseTallyNumeric(inv.AMOUNT) ?? 0,
-          isDeemedPositive: String(getSingleValue(inv.ISDEEMEDPOSITIVE)) === "Yes",
+          isDeemedPositive: parseTallyBoolean(inv.ISDEEMEDPOSITIVE) ?? false,
+          accountingAllocations: inv["ACCOUNTINGALLOCATIONS.LIST"] ? asArray(inv["ACCOUNTINGALLOCATIONS.LIST"]).map((a: any) => ({
+            ledgerName: String(getSingleValue(a.LEDGERNAME) || ""),
+            amount: parseTallyNumeric(a.AMOUNT) ?? 0,
+            isDeemedPositive: parseTallyBoolean(a.ISDEEMEDPOSITIVE),
+          })) : undefined,
+          batchAllocations: inv["BATCHALLOCATIONS.LIST"] ? asArray(inv["BATCHALLOCATIONS.LIST"]).map((b: any) => ({
+            godownName: String(getSingleValue(b.GODOWNNAME) || ""),
+            batchName: getSingleValue(b.BATCHNAME),
+            orderNo: getSingleValue(b.ORDERNO),
+            trackingNumber: getSingleValue(b.TRACKINGNUMBER),
+            actualQuantity: getSingleValue(b.ACTUALQTY ?? b.ACTUALQUANTITY),
+            billedQuantity: getSingleValue(b.BILLEDQTY ?? b.BILLEDQUANTITY),
+            rate: getSingleValue(b.RATE),
+            amount: b.AMOUNT ? parseTallyNumeric(b.AMOUNT) : undefined,
+          })) : undefined,
+          gstRateDetails: inv["GSTRATEDETAILS.LIST"] ? asArray(inv["GSTRATEDETAILS.LIST"]).map((g: any) => ({
+            dutyHead: getSingleValue(g.GSTRATEDUTYHEAD),
+            valuationType: getSingleValue(g.GSTRATEVALUATIONTYPE),
+            rate: parseTallyNumeric(g.GSTRATE),
+          })) : undefined,
         }));
+        base.allInventoryEntries = base.inventoryAllocations;
       }
     } else if (type === "Unit") {
       base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");

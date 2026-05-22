@@ -1,6 +1,8 @@
 export { TallyClient, default } from "./client.js";
 export * from "./types.js";
 export * from "./constants.js";
+export * from "./transport.js";
+export * from "./xmlUtils.js";
 export {
   escapeXml,
   formatDateForTally,
@@ -13,6 +15,10 @@ export {
 } from "./xmlBuilder.js";
 export {
   cleanResponseXml,
+  getSingleValue,
+  parseTallyBoolean,
+  parseTallyNumeric,
+  asArray,
   parseRawXml,
   parseMasterStatistics,
   parseVoucherStatistics,

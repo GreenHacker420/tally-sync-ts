@@ -8,7 +8,6 @@ import {
   CostCentre,
   CostCategory,
   VoucherType,
-  TallyAmount,
   Company,
   Unit,
   StockGroup,
@@ -25,53 +24,9 @@ import {
   PeriodicVoucherStatisticsOptions
 } from "./types.js";
 import { DEFAULT_TDL_FUNCTIONS } from "./constants.js";
+import { escapeXml, formatAmountForTally, formatBoolForTally, formatDateForTally } from "./xmlUtils.js";
 
-// Helper to escape XML special characters
-export function escapeXml(unsafe: string | number | undefined): string {
-  if (unsafe === undefined || unsafe === null) return "";
-  return String(unsafe)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-// Helper to format Date as YYYYMMDD
-export function formatDateForTally(date: Date | string | undefined): string {
-  if (!date) return "";
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return String(date);
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}`;
-}
-
-// Helper to represent boolean as Tally Yes/No
-export function formatBoolForTally(val: boolean | undefined): string {
-  return val ? "Yes" : "No";
-}
-
-// Helper to format standard/complex amount fields
-export function formatAmountForTally(amount: number | TallyAmount | undefined): string {
-  if (amount === undefined || amount === null) return "";
-  if (typeof amount === "number") {
-    return String(amount);
-  }
-  
-  if (amount.forexAmount !== undefined && amount.forexCurrency) {
-    const rate = amount.rateOfExchange ? ` @ ${amount.rateOfExchange}/${amount.forexCurrency}` : "";
-    const currencyStr = amount.currency ? ` = ${amount.currency}` : "";
-    return `${amount.forexCurrency} ${amount.forexAmount}${rate}${currencyStr} ${amount.amount}`;
-  }
-  
-  let val = amount.amount;
-  if (amount.isDebit) {
-    val = -Math.abs(val);
-  }
-  return String(val);
-}
+export { escapeXml, formatAmountForTally, formatBoolForTally, formatDateForTally } from "./xmlUtils.js";
 
 /**
  * Builds the XML to query Tally for a collection of objects
@@ -867,7 +822,23 @@ function voucherToXml(voucher: Voucher): string {
       <ALLLEDGERENTRIES.LIST>
         <LEDGERNAME>${escapeXml(e.ledgerName)}</LEDGERNAME>
         <ISDEEMEDPOSITIVE>${formatBoolForTally(e.isDeemedPositive)}</ISDEEMEDPOSITIVE>
+        ${e.isPartyLedger !== undefined ? `<ISPARTYLEDGER>${formatBoolForTally(e.isPartyLedger)}</ISPARTYLEDGER>` : ""}
         <AMOUNT>${formatAmountForTally(e.amount)}</AMOUNT>
+        ${e.billAllocations ? e.billAllocations.map(b => `
+        <BILLALLOCATIONS.LIST>
+          <NAME>${escapeXml(b.name)}</NAME>
+          ${b.billType ? `<BILLTYPE>${escapeXml(b.billType)}</BILLTYPE>` : ""}
+          ${b.dueDate ? `<BILLCREDITPERIOD>${escapeXml(typeof b.dueDate === "object" && "text" in b.dueDate ? b.dueDate.text || b.dueDate.date : b.dueDate as any)}</BILLCREDITPERIOD>` : ""}
+          <AMOUNT>${formatAmountForTally(b.amount)}</AMOUNT>
+        </BILLALLOCATIONS.LIST>`).join("") : ""}
+        ${e.costCentreAllocations ? e.costCentreAllocations.map(c => `
+        <CATEGORYALLOCATIONS.LIST>
+          ${c.category ? `<CATEGORY>${escapeXml(c.category)}</CATEGORY>` : ""}
+          <COSTCENTREALLOCATIONS.LIST>
+            <NAME>${escapeXml(c.name)}</NAME>
+            <AMOUNT>${formatAmountForTally(c.amount)}</AMOUNT>
+          </COSTCENTREALLOCATIONS.LIST>
+        </CATEGORYALLOCATIONS.LIST>`).join("") : ""}
       </ALLLEDGERENTRIES.LIST>`).join("")
     : "";
 
@@ -876,10 +847,33 @@ function voucherToXml(voucher: Voucher): string {
       <ALLINVENTORYENTRIES.LIST>
         <STOCKITEMNAME>${escapeXml(inv.stockItemName)}</STOCKITEMNAME>
         <RATE>${escapeXml(inv.rate)}</RATE>
-        <ACTUALQUANTITY>${escapeXml(inv.quantity)}</ACTUALQUANTITY>
-        <BILLEDQUANTITY>${escapeXml(inv.quantity)}</BILLEDQUANTITY>
+        <ACTUALQUANTITY>${escapeXml(inv.actualQuantity ?? inv.quantity)}</ACTUALQUANTITY>
+        <BILLEDQUANTITY>${escapeXml(inv.billedQuantity ?? inv.quantity)}</BILLEDQUANTITY>
         <AMOUNT>${formatAmountForTally(inv.amount)}</AMOUNT>
         <ISDEEMEDPOSITIVE>${formatBoolForTally(inv.isDeemedPositive)}</ISDEEMEDPOSITIVE>
+        ${inv.batchAllocations ? inv.batchAllocations.map(b => `
+        <BATCHALLOCATIONS.LIST>
+          ${b.batchName ? `<BATCHNAME>${escapeXml(b.batchName)}</BATCHNAME>` : ""}
+          <GODOWNNAME>${escapeXml(b.godownName)}</GODOWNNAME>
+          ${b.orderNo ? `<ORDERNO>${escapeXml(b.orderNo)}</ORDERNO>` : ""}
+          ${b.trackingNumber ? `<TRACKINGNUMBER>${escapeXml(b.trackingNumber)}</TRACKINGNUMBER>` : ""}
+          ${b.actualQuantity !== undefined ? `<ACTUALQTY>${escapeXml(b.actualQuantity as any)}</ACTUALQTY>` : ""}
+          ${b.billedQuantity !== undefined ? `<BILLEDQTY>${escapeXml(b.billedQuantity as any)}</BILLEDQTY>` : ""}
+          ${b.rate !== undefined ? `<RATE>${escapeXml(b.rate as any)}</RATE>` : ""}
+          ${b.amount !== undefined ? `<AMOUNT>${formatAmountForTally(b.amount)}</AMOUNT>` : ""}
+        </BATCHALLOCATIONS.LIST>`).join("") : ""}
+        ${inv.accountingAllocations ? inv.accountingAllocations.map(a => `
+        <ACCOUNTINGALLOCATIONS.LIST>
+          <LEDGERNAME>${escapeXml(a.ledgerName)}</LEDGERNAME>
+          ${a.isDeemedPositive !== undefined ? `<ISDEEMEDPOSITIVE>${formatBoolForTally(a.isDeemedPositive)}</ISDEEMEDPOSITIVE>` : ""}
+          <AMOUNT>${formatAmountForTally(a.amount)}</AMOUNT>
+        </ACCOUNTINGALLOCATIONS.LIST>`).join("") : ""}
+        ${inv.gstRateDetails ? inv.gstRateDetails.map(g => `
+        <GSTRATEDETAILS.LIST>
+          ${g.dutyHead ? `<GSTRATEDUTYHEAD>${escapeXml(g.dutyHead)}</GSTRATEDUTYHEAD>` : ""}
+          ${g.valuationType ? `<GSTRATEVALUATIONTYPE>${escapeXml(g.valuationType)}</GSTRATEVALUATIONTYPE>` : ""}
+          ${g.rate !== undefined ? `<GSTRATE>${g.rate}</GSTRATE>` : ""}
+        </GSTRATEDETAILS.LIST>`).join("") : ""}
         ${inv.ledgers ? inv.ledgers.map(l => `
         <ALLLEDGERENTRIES.LIST>
           <LEDGERNAME>${escapeXml(l.ledgerName)}</LEDGERNAME>
@@ -895,8 +889,32 @@ function voucherToXml(voucher: Voucher): string {
     <VOUCHERTYPENAME>${escapeXml(voucher.voucherType)}</VOUCHERTYPENAME>
     ${voucher.voucherNumber ? `<VOUCHERNUMBER>${escapeXml(voucher.voucherNumber)}</VOUCHERNUMBER>` : ""}
     ${voucher.partyName ? `<PARTYLEDGERNAME>${escapeXml(voucher.partyName)}</PARTYLEDGERNAME>` : ""}
+    ${voucher.referenceDate ? `<REFERENCEDATE>${formatDateForTally(voucher.referenceDate)}</REFERENCEDATE>` : ""}
+    ${voucher.effectiveDate ? `<EFFECTIVEDATE>${formatDateForTally(voucher.effectiveDate)}</EFFECTIVEDATE>` : ""}
+    ${voucher.partyGSTIN ? `<PARTYGSTIN>${escapeXml(voucher.partyGSTIN)}</PARTYGSTIN>` : ""}
+    ${voucher.partyGSTRegistrationType ? `<GSTREGISTRATIONTYPE>${escapeXml(voucher.partyGSTRegistrationType)}</GSTREGISTRATIONTYPE>` : ""}
+    ${voucher.gstRegistration ? `<GSTREGISTRATION>${escapeXml(voucher.gstRegistration)}</GSTREGISTRATION>` : ""}
+    ${voucher.placeOfSupply ? `<PLACEOFSUPPLY>${escapeXml(voucher.placeOfSupply)}</PLACEOFSUPPLY>` : ""}
+    ${voucher.consigneeName ? `<CONSIGNEENAME>${escapeXml(voucher.consigneeName)}</CONSIGNEENAME>` : ""}
+    ${voucher.consigneeGSTIN ? `<CONSIGNEEGSTIN>${escapeXml(voucher.consigneeGSTIN)}</CONSIGNEEGSTIN>` : ""}
+    ${voucher.consigneeState ? `<CONSIGNEESTATENAME>${escapeXml(voucher.consigneeState)}</CONSIGNEESTATENAME>` : ""}
+    ${voucher.voucherGSTClass ? `<VCHGSTCLASS>${escapeXml(voucher.voucherGSTClass)}</VCHGSTCLASS>` : ""}
+    ${voucher.isInvoice !== undefined ? `<ISINVOICE>${formatBoolForTally(voucher.isInvoice)}</ISINVOICE>` : ""}
+    ${voucher.isOptional !== undefined ? `<ISOPTIONAL>${formatBoolForTally(voucher.isOptional)}</ISOPTIONAL>` : ""}
+    ${voucher.viewType ? `<VOUCHERVIEWTYPE>${escapeXml(voucher.viewType)}</VOUCHERVIEWTYPE>` : ""}
     ${voucher.narration ? `<NARRATION>${escapeXml(voucher.narration)}</NARRATION>` : ""}
     ${voucher.reference ? `<REFERENCE>${escapeXml(voucher.reference)}</REFERENCE>` : ""}
+    ${voucher.ewayBillDetails ? `
+    <EWAYBILLDETAILS.LIST>
+      ${voucher.ewayBillDetails.billNumber ? `<BILLNUMBER>${escapeXml(voucher.ewayBillDetails.billNumber)}</BILLNUMBER>` : ""}
+      ${voucher.ewayBillDetails.billDate ? `<BILLDATE>${formatDateForTally(voucher.ewayBillDetails.billDate)}</BILLDATE>` : ""}
+      ${voucher.ewayBillDetails.billStatus ? `<BILLSTATUS>${escapeXml(voucher.ewayBillDetails.billStatus)}</BILLSTATUS>` : ""}
+      ${voucher.ewayBillDetails.transporterName ? `<TRANSPORTERNAME>${escapeXml(voucher.ewayBillDetails.transporterName)}</TRANSPORTERNAME>` : ""}
+      ${voucher.ewayBillDetails.transporterId ? `<TRANSPORTERID>${escapeXml(voucher.ewayBillDetails.transporterId)}</TRANSPORTERID>` : ""}
+      ${voucher.ewayBillDetails.distance !== undefined ? `<DISTANCE>${voucher.ewayBillDetails.distance}</DISTANCE>` : ""}
+      ${voucher.ewayBillDetails.vehicleNumber ? `<VEHICLENUMBER>${escapeXml(voucher.ewayBillDetails.vehicleNumber)}</VEHICLENUMBER>` : ""}
+      ${voucher.ewayBillDetails.vehicleType ? `<VEHICLETYPE>${escapeXml(voucher.ewayBillDetails.vehicleType)}</VEHICLETYPE>` : ""}
+    </EWAYBILLDETAILS.LIST>` : ""}
     ${ledgerEntriesXml}
     ${inventoryXml}
   </VOUCHER>`;

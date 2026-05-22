@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert";
+import { readFileSync } from "node:fs";
 import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, buildMasterStatisticsXml, buildVoucherStatisticsXml, buildCountRequestXml, buildPeriodicVoucherStatisticsXml } from "../src/xmlBuilder.js";
-import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics, parseCountResponse, parsePeriodicVoucherStatistics } from "../src/xmlParser.js";
+import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics, parseCountResponse, parsePeriodicVoucherStatistics, parseTallyBoolean, parseTallyNumeric, asArray } from "../src/xmlParser.js";
+import { TallyClient } from "../src/client.js";
+import { TallyTransport } from "../src/transport.js";
 import { Ledger, Group, Voucher, Currency, GSTRegistration } from "../src/types.js";
 
 test("XML Builder - escapeXml", () => {
@@ -749,4 +752,188 @@ test("XML Parser - custom post response report", () => {
   assert.strictEqual(resp[0].guid, "abc");
   assert.strictEqual(resp[1].status, "failure");
   assert.strictEqual(resp[1].message, "Validation failed");
+});
+
+test("XML Utils - normalization helpers", () => {
+  assert.strictEqual(parseTallyBoolean("Yes"), true);
+  assert.strictEqual(parseTallyBoolean("false"), false);
+  assert.strictEqual(parseTallyNumeric("1,250.50 Dr"), 1250.5);
+  assert.strictEqual(parseTallyNumeric("1,250.50 Cr"), -1250.5);
+  assert.deepEqual(asArray("x"), ["x"]);
+  assert.deepEqual(asArray(undefined), []);
+});
+
+test("XML Builder & Parser - deep voucher allocations", () => {
+  const voucher: Voucher = {
+    date: "2026-05-21",
+    voucherType: "Sales",
+    voucherNumber: "S-1",
+    reference: "PO-9",
+    referenceDate: "2026-05-20",
+    partyName: "Acme Customer",
+    partyGSTIN: "27ABCDE1234F1Z5",
+    placeOfSupply: "Maharashtra",
+    isInvoice: true,
+    ledgerEntries: [
+      {
+        ledgerName: "Acme Customer",
+        amount: 1180,
+        isDeemedPositive: true,
+        isPartyLedger: true,
+        billAllocations: [{ name: "S-1", billType: "New Ref", amount: 1180, dueDate: "30 Days" }],
+        costCentreAllocations: [{ category: "Primary Cost Category", name: "Sales Team", amount: 1180 }],
+      },
+    ],
+    inventoryAllocations: [
+      {
+        stockItemName: "Widget",
+        quantity: "10 pcs",
+        rate: "100/pcs",
+        amount: 1000,
+        isDeemedPositive: false,
+        batchAllocations: [{ godownName: "Main Location", batchName: "B1", actualQuantity: "10 pcs", billedQuantity: "10 pcs", amount: 1000 }],
+        accountingAllocations: [{ ledgerName: "Sales", amount: -1000, isDeemedPositive: false }],
+        gstRateDetails: [{ dutyHead: "CGST", valuationType: "Based on Value", rate: 9 }],
+      },
+    ],
+    ewayBillDetails: {
+      billNumber: "EWB-1",
+      transporterName: "Fast Transport",
+      vehicleNumber: "MH01AB1234",
+    },
+  };
+
+  const builtXml = buildPostXml("Voucher", [voucher]);
+  assert.ok(builtXml.includes("<BILLALLOCATIONS.LIST>"));
+  assert.ok(builtXml.includes("<CATEGORYALLOCATIONS.LIST>"));
+  assert.ok(builtXml.includes("<BATCHALLOCATIONS.LIST>"));
+  assert.ok(builtXml.includes("<ACCOUNTINGALLOCATIONS.LIST>"));
+  assert.ok(builtXml.includes("<GSTRATEDETAILS.LIST>"));
+  assert.ok(builtXml.includes("<EWAYBILLDETAILS.LIST>"));
+
+  const responseXml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION>
+            <VOUCHER>
+              <DATE>20260521</DATE>
+              <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+              <VOUCHERNUMBER>S-1</VOUCHERNUMBER>
+              <REFERENCE>PO-9</REFERENCE>
+              <REFERENCEDATE>20260520</REFERENCEDATE>
+              <PARTYLEDGERNAME>Acme Customer</PARTYLEDGERNAME>
+              <PARTYGSTIN>27ABCDE1234F1Z5</PARTYGSTIN>
+              <PLACEOFSUPPLY>Maharashtra</PLACEOFSUPPLY>
+              <ISINVOICE>Yes</ISINVOICE>
+              <EWAYBILLDETAILS.LIST>
+                <BILLNUMBER>EWB-1</BILLNUMBER>
+                <TRANSPORTERNAME>Fast Transport</TRANSPORTERNAME>
+                <VEHICLENUMBER>MH01AB1234</VEHICLENUMBER>
+              </EWAYBILLDETAILS.LIST>
+              <ALLLEDGERENTRIES.LIST>
+                <LEDGERNAME>Acme Customer</LEDGERNAME>
+                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+                <AMOUNT>1180</AMOUNT>
+                <BILLALLOCATIONS.LIST>
+                  <NAME>S-1</NAME>
+                  <BILLTYPE>New Ref</BILLTYPE>
+                  <BILLCREDITPERIOD>30 Days</BILLCREDITPERIOD>
+                  <AMOUNT>1180</AMOUNT>
+                </BILLALLOCATIONS.LIST>
+                <CATEGORYALLOCATIONS.LIST>
+                  <CATEGORY>Primary Cost Category</CATEGORY>
+                  <COSTCENTREALLOCATIONS.LIST>
+                    <NAME>Sales Team</NAME>
+                    <AMOUNT>1180</AMOUNT>
+                  </COSTCENTREALLOCATIONS.LIST>
+                </CATEGORYALLOCATIONS.LIST>
+              </ALLLEDGERENTRIES.LIST>
+              <ALLINVENTORYENTRIES.LIST>
+                <STOCKITEMNAME>Widget</STOCKITEMNAME>
+                <ACTUALQUANTITY>10 pcs</ACTUALQUANTITY>
+                <BILLEDQUANTITY>10 pcs</BILLEDQUANTITY>
+                <RATE>100/pcs</RATE>
+                <AMOUNT>1000</AMOUNT>
+                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                <BATCHALLOCATIONS.LIST>
+                  <BATCHNAME>B1</BATCHNAME>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                  <ACTUALQTY>10 pcs</ACTUALQTY>
+                  <BILLEDQTY>10 pcs</BILLEDQTY>
+                  <AMOUNT>1000</AMOUNT>
+                </BATCHALLOCATIONS.LIST>
+                <ACCOUNTINGALLOCATIONS.LIST>
+                  <LEDGERNAME>Sales</LEDGERNAME>
+                  <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                  <AMOUNT>-1000</AMOUNT>
+                </ACCOUNTINGALLOCATIONS.LIST>
+                <GSTRATEDETAILS.LIST>
+                  <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                  <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                  <GSTRATE>9</GSTRATE>
+                </GSTRATEDETAILS.LIST>
+              </ALLINVENTORYENTRIES.LIST>
+            </VOUCHER>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  const parsed = parseExportCollection<Voucher>(responseXml, "Voucher");
+  assert.strictEqual(parsed[0].partyGSTIN, "27ABCDE1234F1Z5");
+  assert.strictEqual(parsed[0].isInvoice, true);
+  assert.strictEqual(parsed[0].ewayBillDetails?.vehicleNumber, "MH01AB1234");
+  assert.strictEqual(parsed[0].ledgerEntries?.[0].billAllocations?.[0].billType, "New Ref");
+  assert.strictEqual(parsed[0].ledgerEntries?.[0].costCentreAllocations?.[0].name, "Sales Team");
+  assert.strictEqual(parsed[0].inventoryAllocations?.[0].batchAllocations?.[0].batchName, "B1");
+  assert.strictEqual(parsed[0].inventoryAllocations?.[0].accountingAllocations?.[0].ledgerName, "Sales");
+  assert.strictEqual(parsed[0].inventoryAllocations?.[0].gstRateDetails?.[0].rate, 9);
+});
+
+test("XML Parser - C# fixture samples", () => {
+  const ledgerXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Ledger/ledger_sample_data.xml", "utf8");
+  const groupXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Group/Groups_complete.xml", "utf8");
+  const currencyXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Currency/Currencys_complete.xml", "utf8");
+  const costCentreXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/CostCentre/CostCentres_complete.xml", "utf8");
+  const voucherXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Voucher/Vouchers_Sales_complete.xml", "utf8");
+
+  assert.ok(parseExportCollection<Ledger>(ledgerXml, "Ledger").length > 0);
+  assert.ok(parseExportCollection<Group>(groupXml, "Group").length > 0);
+  assert.ok(parseExportCollection<Currency>(currencyXml, "Currency").length > 0);
+  assert.ok(parseExportCollection<any>(costCentreXml, "CostCentre").length > 0);
+  assert.ok(parseExportCollection<Voucher>(voucherXml, "Voucher").length > 0);
+});
+
+test("TallyClient - generic APIs use injected transport", async () => {
+  class MockTransport implements TallyTransport {
+    public requests: string[] = [];
+    constructor(private responses: string[]) {}
+    async send(xml: string): Promise<string> {
+      this.requests.push(xml);
+      return this.responses.shift() || "<ENVELOPE><BODY><DATA><COLLECTION /></DATA></BODY></ENVELOPE>";
+    }
+  }
+
+  const transport = new MockTransport([
+    `<ENVELOPE><BODY><DATA><COLLECTION><LEDGER><NAME>Cash</NAME><PARENT>Cash-in-hand</PARENT></LEDGER></COLLECTION></DATA></BODY></ENVELOPE>`,
+    `<ENVELOPE><TC_TOTALCOUNT>1</TC_TOTALCOUNT></ENVELOPE>`,
+    `<ENVELOPE><BODY><DATA><COLLECTION><GROUP><NAME>Sundry Debtors</NAME><PARENT></PARENT></GROUP></COLLECTION></DATA></BODY></ENVELOPE>`,
+    `<ENVELOPE><BODY><DATA><IMPORTRESULT><CREATED>1</CREATED></IMPORTRESULT></DATA></BODY></ENVELOPE>`,
+  ]);
+  const client = new TallyClient("http://localhost", 9000, 3, transport);
+
+  const ledgers = await client.getObjects("Ledger");
+  assert.strictEqual(ledgers[0].name, "Cash");
+
+  const paged = await client.getPaginatedObjects<Group>("Group", { pageNum: 1, recordsPerPage: 10 });
+  assert.strictEqual(paged.totalCount, 1);
+  assert.strictEqual(paged.objects[0].name, "Sundry Debtors");
+
+  const posted = await client.postObjects("Ledger", [{ name: "X", group: "Y" }]);
+  assert.strictEqual(posted[0].status, "success");
+  assert.ok(transport.requests.some(xml => xml.includes("<TYPE>Ledger</TYPE>")));
+  assert.ok(transport.requests.some(xml => xml.includes("<LEDGER NAME=\"X\" ACTION=\"Create\">")));
 });

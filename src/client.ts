@@ -27,8 +27,11 @@ import {
   AutoColVoucherTypeStat,
   GSTRegistration,
   PaginatedResponse,
-  PeriodicVoucherStatisticsOptions
+  PeriodicVoucherStatisticsOptions,
+  TallyObjectMap,
+  TallyObjectType
 } from "./types.js";
+import { FetchTallyTransport, TallyTransport } from "./transport.js";
 import {
   buildExportCollectionXml,
   buildLicenseInfoRequestXml,
@@ -55,69 +58,28 @@ import {
 } from "./xmlParser.js";
 
 export class TallyClient {
-  private baseURL: string;
-  private port: number;
-  private timeoutMs: number;
+  private transport: TallyTransport;
 
-  constructor(baseURL = "http://localhost", port = 9000, timeoutMinutes = 3) {
-    this.baseURL = this.cleanUrl(baseURL);
-    this.port = port;
-    this.timeoutMs = timeoutMinutes * 60 * 1000;
-  }
-
-  private cleanUrl(url: string): string {
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      return `http://${url}`;
-    }
-    return url;
+  constructor(baseURL = "http://localhost", port = 9000, timeoutMinutes = 3, transport?: TallyTransport) {
+    this.transport = transport || new FetchTallyTransport({ baseURL, port, timeoutMinutes });
   }
 
   /**
    * Updates Tally Service connection parameters
    */
   public setupTallyService(url: string, port: number): void {
-    this.baseURL = this.cleanUrl(url);
-    this.port = port;
-  }
-
-  private get fullURL(): string {
-    return `${this.baseURL}:${this.port}`;
+    if (this.transport instanceof FetchTallyTransport) {
+      this.transport.setup(url, port);
+      return;
+    }
+    this.transport = new FetchTallyTransport({ baseURL: url, port });
   }
 
   /**
    * Sends raw XML to Tally Prime / ERP 9 server
    */
   public async sendRequest(xml: string, requestType = "Generic Request"): Promise<string> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await fetch(this.fullURL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/xml; charset=utf-8",
-        },
-        body: xml,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
-      // Read response as buffer first, then decode using standard UTF-8 (or UTF-16 if Tally outputs so)
-      const buffer = await response.arrayBuffer();
-      const decoder = new TextDecoder("utf-8"); // Modern Tally uses UTF-8 or standard encodings
-      return decoder.decode(buffer);
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      if (error.name === "AbortError") {
-        throw new Error(`Request to Tally timed out after ${this.timeoutMs}ms`);
-      }
-      throw new Error(`Failed to connect to Tally on ${this.fullURL}: ${error.message}`);
-    }
+    return this.transport.send(xml, requestType);
   }
 
   /**
@@ -492,6 +454,25 @@ export class TallyClient {
     return parseCountResponse(resp);
   }
 
+  public async getObjects<TType extends TallyObjectType>(
+    collectionType: TType,
+    options: PaginatedRequestOptions = {}
+  ): Promise<TallyObjectMap[TType][]> {
+    const xml = buildExportCollectionXml(collectionType, options);
+    const resp = await this.sendRequest(xml, `Get ${collectionType}`);
+    return parseExportCollection<TallyObjectMap[TType]>(resp, collectionType);
+  }
+
+  public async postObjects<TType extends TallyObjectType>(
+    collectionType: TType,
+    objects: TallyObjectMap[TType][],
+    options: PostRequestOptions = {}
+  ): Promise<PostResponse[]> {
+    const xml = buildPostXml(collectionType, objects, options);
+    const resp = await this.sendRequest(xml, `Post ${collectionType}`);
+    return parsePostResponse(resp);
+  }
+
   /**
    * Fetches a paginated collection and returns count metadata, matching the C# PaginatedResponse shape.
    */
@@ -501,16 +482,10 @@ export class TallyClient {
   ): Promise<PaginatedResponse<T>> {
     const pageNum = options.pageNum || 1;
     const recordsPerPage = options.recordsPerPage || 1000;
-    const [objects, totalCount] = await Promise.all([
-      (async () => {
-        const xml = buildExportCollectionXml(collectionType, { ...options, pageNum, recordsPerPage, disableCountTag: true });
-        const resp = await this.sendRequest(xml, `Get Paginated ${collectionType}`);
-        return parseExportCollection<T>(resp, collectionType);
-      })(),
-      options.disableCountTag
-        ? Promise.resolve(0)
-        : this.getObjectsCount(collectionType, options),
-    ]);
+    const totalCount = options.disableCountTag ? 0 : await this.getObjectsCount(collectionType, options);
+    const xml = buildExportCollectionXml(collectionType, { ...options, pageNum, recordsPerPage, disableCountTag: true });
+    const resp = await this.sendRequest(xml, `Get Paginated ${collectionType}`);
+    const objects = parseExportCollection<T>(resp, collectionType);
 
     return {
       totalCount,
