@@ -5,7 +5,7 @@ import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, 
 import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics, parseCountResponse, parsePeriodicVoucherStatistics, parseTallyBoolean, parseTallyNumeric, asArray } from "../src/xmlParser.js";
 import { TallyClient } from "../src/client.js";
 import { TallyTransport } from "../src/transport.js";
-import { Ledger, Group, Voucher, Currency, GSTRegistration } from "../src/types.js";
+import { Ledger, Group, Voucher, Currency, GSTRegistration, AttendanceType, Budget } from "../src/types.js";
 
 test("XML Builder - escapeXml", () => {
   assert.strictEqual(escapeXml("Sales & Services"), "Sales &amp; Services");
@@ -965,4 +965,118 @@ test("XML Builder - CRUD Deletion and Cancellation Actions", () => {
   assert.ok(voucherXml.includes('<VOUCHER VCHTYPE="Sales" ACTION="Cancel">'));
   assert.ok(voucherXml.includes("<VOUCHERNUMBER>INV-99</VOUCHERNUMBER>"));
 });
+
+test("XML Builder - AttendanceType Serialization", () => {
+  const at: AttendanceType = {
+    name: "Overtime Hours",
+    parent: "Primary",
+    attendanceType: "Production",
+    unit: "Hours",
+  };
+  const xml = buildPostXml("AttendanceType", [at]);
+  assert.ok(xml.includes('<ATTENDANCE NAME="Overtime Hours" ACTION="Create">'));
+  assert.ok(xml.includes("<PARENT>Primary</PARENT>"));
+  assert.ok(xml.includes("<ATTENDANCEONPRODUCTION>Production</ATTENDANCEONPRODUCTION>"));
+  assert.ok(xml.includes("<BASEUNITS>Hours</BASEUNITS>"));
+});
+
+test("XML Parser - AttendanceType Deserialization", () => {
+  const xml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION>
+            <ATTENDANCE NAME="Sick Leave">
+              <PARENT>Primary</PARENT>
+              <ATTENDANCEONPRODUCTION>Attendance / Leave with Pay</ATTENDANCEONPRODUCTION>
+              <BASEUNITS>Days</BASEUNITS>
+              <MASTERID>300</MASTERID>
+              <ALTERID>4500</ALTERID>
+            </ATTENDANCE>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+  const result = parseExportCollection<AttendanceType>(xml, "AttendanceType");
+  assert.strictEqual(result.length, 1);
+  assert.strictEqual(result[0].name, "Sick Leave");
+  assert.strictEqual(result[0].parent, "Primary");
+  assert.strictEqual(result[0].attendanceType, "Attendance / Leave with Pay");
+  assert.strictEqual(result[0].unit, "Days");
+  assert.strictEqual(result[0].masterId, 300);
+  assert.strictEqual(result[0].alterId, 4500);
+});
+
+test("XML Builder - Budget Serialization", () => {
+  const bg: Budget = {
+    name: "FY 2026 Marketing Budget",
+    parent: "Primary",
+    startingFrom: "2026-04-01",
+    endingAt: "2027-03-31",
+  };
+  const xml = buildPostXml("Budget", [bg]);
+  assert.ok(xml.includes('<BUDGET NAME="FY 2026 Marketing Budget" ACTION="Create">'));
+  assert.ok(xml.includes("<PARENT>Primary</PARENT>"));
+  assert.ok(xml.includes("<STARTINGFROM>20260401</STARTINGFROM>"));
+  assert.ok(xml.includes("<ENDINGAT>20270331</ENDINGAT>"));
+});
+
+test("XML Parser - Budget Deserialization", () => {
+  const xml = `
+    <ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION>
+            <BUDGET NAME="Sales Budget">
+              <PARENT>Primary</PARENT>
+              <STARTINGFROM>20260401</STARTINGFROM>
+              <ENDINGAT>20260630</ENDINGAT>
+              <MASTERID>900</MASTERID>
+              <ALTERID>5510</ALTERID>
+            </BUDGET>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>
+  `;
+  const result = parseExportCollection<Budget>(xml, "Budget");
+  assert.strictEqual(result.length, 1);
+  assert.strictEqual(result[0].name, "Sales Budget");
+  assert.strictEqual(result[0].parent, "Primary");
+  assert.strictEqual(result[0].startingFrom, "20260401");
+  assert.strictEqual(result[0].endingAt, "20260630");
+  assert.strictEqual(result[0].masterId, 900);
+  assert.strictEqual(result[0].alterId, 5510);
+});
+
+test("Client - getReport & getGSTComputation XML generation", async () => {
+  let requestedXml = "";
+  const mockTransport = {
+    send: async (xml: string, _type: string) => {
+      requestedXml = xml;
+      return `
+        <ENVELOPE>
+          <BODY>
+            <DATA>
+              <REPORTDATA>Mock Report Content</REPORTDATA>
+            </DATA>
+          </BODY>
+        </ENVELOPE>
+      `;
+    }
+  };
+  const mockClient = new TallyClient("http://localhost", 9000, 3, mockTransport);
+  await mockClient.getGSTComputation({
+    company: "Chirag Enterprises",
+    fromDate: "2026-04-01",
+    toDate: "2026-05-30"
+  });
+
+  assert.ok(requestedXml.includes("<ID>GSTComputation</ID>"));
+  assert.ok(requestedXml.includes("<SVCURRENTCOMPANY>Chirag Enterprises</SVCURRENTCOMPANY>"));
+  assert.ok(requestedXml.includes("<SVFROMDATE>20260401</SVFROMDATE>"));
+  assert.ok(requestedXml.includes("<SVTODATE>20260530</SVTODATE>"));
+});
+
 
