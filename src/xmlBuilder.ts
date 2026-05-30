@@ -21,7 +21,9 @@ import {
   Currency,
   Periodicity,
   GSTRegistration,
-  PeriodicVoucherStatisticsOptions
+  PeriodicVoucherStatisticsOptions,
+  AttendanceType,
+  Budget
 } from "./types.js";
 import { DEFAULT_TDL_FUNCTIONS } from "./constants.js";
 import { escapeXml, formatAmountForTally, formatBoolForTally, formatDateForTally } from "./xmlUtils.js";
@@ -1266,11 +1268,84 @@ function gstRegistrationToXml(reg: GSTRegistration): string {
   </GSTREGISTRATION>`;
 }
 
+function attendanceTypeToXml(at: AttendanceType): string {
+  const action = at.action || (at.masterId ? "Alter" : "Create");
+  let languageListXml = "";
+  if (at.languageNameList && at.languageNameList.length > 0) {
+    const names = at.languageNameList[0].names.map(n => `<NAME>${escapeXml(n)}</NAME>`).join("\n");
+    languageListXml = `
+    <LANGUAGENAME.LIST>
+      <NAME.LIST TYPE="String">
+        ${names}
+      </NAME.LIST>
+      <LANGUAGEID>${at.languageNameList[0].languageId || 1024}</LANGUAGEID>
+    </LANGUAGENAME.LIST>`;
+  } else if (at.alias) {
+    languageListXml = `
+    <LANGUAGENAME.LIST>
+      <NAME.LIST TYPE="String">
+        <NAME>${escapeXml(at.name)}</NAME>
+        <NAME>${escapeXml(at.alias)}</NAME>
+      </NAME.LIST>
+      <LANGUAGEID>1024</LANGUAGEID>
+    </LANGUAGENAME.LIST>`;
+  }
+
+  return `
+  <ATTENDANCE NAME="${escapeXml(at.name)}" ACTION="${action}">
+    <NAME.LIST>
+      <NAME>${escapeXml(at.name)}</NAME>
+    </NAME.LIST>
+    ${languageListXml}
+    ${at.parent ? `<PARENT>${escapeXml(at.parent)}</PARENT>` : ""}
+    ${at.attendanceType ? `<ATTENDANCEONPRODUCTION>${escapeXml(at.attendanceType)}</ATTENDANCEONPRODUCTION>` : ""}
+    ${at.unit ? `<BASEUNITS>${escapeXml(at.unit)}</BASEUNITS>` : ""}
+  </ATTENDANCE>`;
+}
+
+function budgetToXml(bg: Budget): string {
+  const action = bg.action || (bg.masterId ? "Alter" : "Create");
+  let languageListXml = "";
+  if (bg.languageNameList && bg.languageNameList.length > 0) {
+    const names = bg.languageNameList[0].names.map(n => `<NAME>${escapeXml(n)}</NAME>`).join("\n");
+    languageListXml = `
+    <LANGUAGENAME.LIST>
+      <NAME.LIST TYPE="String">
+        ${names}
+      </NAME.LIST>
+      <LANGUAGEID>${bg.languageNameList[0].languageId || 1024}</LANGUAGEID>
+    </LANGUAGENAME.LIST>`;
+  } else if (bg.alias) {
+    languageListXml = `
+    <LANGUAGENAME.LIST>
+      <NAME.LIST TYPE="String">
+        <NAME>${escapeXml(bg.name)}</NAME>
+        <NAME>${escapeXml(bg.alias)}</NAME>
+      </NAME.LIST>
+      <LANGUAGEID>1024</LANGUAGEID>
+    </LANGUAGENAME.LIST>`;
+  }
+
+  const fromDate = formatDateForTally(bg.startingFrom);
+  const toDate = formatDateForTally(bg.endingAt);
+
+  return `
+  <BUDGET NAME="${escapeXml(bg.name)}" ACTION="${action}">
+    <NAME.LIST>
+      <NAME>${escapeXml(bg.name)}</NAME>
+    </NAME.LIST>
+    ${languageListXml}
+    ${bg.parent ? `<PARENT>${escapeXml(bg.parent)}</PARENT>` : ""}
+    ${fromDate ? `<STARTINGFROM>${fromDate}</STARTINGFROM>` : ""}
+    ${toDate ? `<ENDINGAT>${toDate}</ENDINGAT>` : ""}
+  </BUDGET>`;
+}
+
 /**
  * Builds the POST XML wrapper for importing multiple Masters/Vouchers into Tally
  */
 export function buildPostXml(
-  type: "Ledger" | "Group" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Company" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration",
+  type: "Ledger" | "Group" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Company" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration" | "AttendanceType" | "Budget",
   objects: any[],
   options: PostRequestOptions = {}
 ): string {
@@ -1307,6 +1382,10 @@ export function buildPostXml(
     innerXml = objects.map(o => currencyToXml(o)).join("");
   } else if (type === "GSTRegistration") {
     innerXml = objects.map(o => gstRegistrationToXml(o)).join("");
+  } else if (type === "AttendanceType") {
+    innerXml = objects.map(o => attendanceTypeToXml(o)).join("");
+  } else if (type === "Budget") {
+    innerXml = objects.map(o => budgetToXml(o)).join("");
   }
 
   return `<?xml version="1.0" encoding="utf-8"?>

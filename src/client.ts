@@ -29,7 +29,9 @@ import {
   PaginatedResponse,
   PeriodicVoucherStatisticsOptions,
   TallyObjectMap,
-  TallyObjectType
+  TallyObjectType,
+  AttendanceType,
+  Budget
 } from "./types.js";
 import { FetchTallyTransport, TallyTransport } from "./transport.js";
 import {
@@ -41,7 +43,9 @@ import {
   buildMasterStatisticsXml,
   buildVoucherStatisticsXml,
   buildCountRequestXml,
-  buildPeriodicVoucherStatisticsXml
+  buildPeriodicVoucherStatisticsXml,
+  escapeXml,
+  formatDateForTally
 } from "./xmlBuilder.js";
 import {
   parseActiveCompany,
@@ -506,6 +510,73 @@ export class TallyClient {
     const xml = buildPeriodicVoucherStatisticsXml(periodicity, options);
     const resp = await this.sendRequest(xml, "Get Periodic Voucher Statistics");
     return parsePeriodicVoucherStatistics(resp);
+  }
+
+  /**
+   * Fetches Attendance Types from Tally
+   */
+  public async getAttendanceTypes(options: PaginatedRequestOptions = {}): Promise<AttendanceType[]> {
+    return this.getObjects("AttendanceType", options);
+  }
+
+  /**
+   * Creates or Alters Attendance Types in Tally
+   */
+  public async postAttendanceTypes(attendanceTypes: AttendanceType[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
+    return this.postObjects("AttendanceType", attendanceTypes, options);
+  }
+
+  /**
+   * Fetches Budgets from Tally
+   */
+  public async getBudgets(options: PaginatedRequestOptions = {}): Promise<Budget[]> {
+    return this.getObjects("Budget", options);
+  }
+
+  /**
+   * Creates or Alters Budgets in Tally
+   */
+  public async postBudgets(budgets: Budget[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
+    return this.postObjects("Budget", budgets, options);
+  }
+
+  /**
+   * Fetches a raw statutory or built-in Tally report by its Tally Report Name/ID.
+   * Useful for statutory returns (GSTR-1, GSTR-3B) or native summaries (GSTComputation).
+   */
+  public async getReport(reportId: string, options: RequestOptions = {}): Promise<any> {
+    const fromDate = formatDateForTally(options.fromDate);
+    const toDate = formatDateForTally(options.toDate);
+    
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>${reportId}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        ${options.company ? `<SVCURRENTCOMPANY>${escapeXml(options.company)}</SVCURRENTCOMPANY>` : ""}
+        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
+        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
+      </STATICVARIABLES>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+
+    const resp = await this.sendRequest(xml, `Get Report ${reportId}`);
+    return parseRawXml(resp);
+  }
+
+  /**
+   * Fetches the native Tally GST Computation report containing tax liability and ITC summaries.
+   */
+  public async getGSTComputation(options: RequestOptions = {}): Promise<any> {
+    return this.getReport("GSTComputation", options);
   }
 }
 export default TallyClient;

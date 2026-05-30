@@ -638,6 +638,18 @@ export interface Currency extends TallyObject {
   formalName?: string; // Maps to MAILINGNAME
 }
 
+export interface AttendanceType extends BaseAliasedMasterObject {
+  parent?: string;
+  attendanceType?: string; // e.g. "Attendance / Leave with Pay", "Leave without Pay", "Production", etc.
+  unit?: string; // Associated payroll unit
+}
+
+export interface Budget extends BaseAliasedMasterObject {
+  parent?: string;
+  startingFrom?: Date | string;
+  endingAt?: Date | string;
+}
+
 export type Periodicity = "Day" | "Week" | "Fortnight" | "Month" | "Three Month" | "Six Month" | "Year";
 
 export interface PeriodicVoucherStat {
@@ -670,7 +682,9 @@ export type TallyObjectType =
   | "Employee"
   | "EmployeeGroup"
   | "Currency"
-  | "GSTRegistration";
+  | "GSTRegistration"
+  | "AttendanceType"
+  | "Budget";
 
 export type TallyObjectMap = {
   Ledger: Ledger;
@@ -689,4 +703,7 @@ export type TallyObjectMap = {
   EmployeeGroup: EmployeeGroup;
   Currency: Currency;
   GSTRegistration: GSTRegistration;
+  AttendanceType: AttendanceType;
+  Budget: Budget;
 };
+

@@ -22,7 +22,9 @@ import {
   Currency,
   PeriodicVoucherStat,
   AutoColVoucherTypeStat,
-  GSTRegistration
+  GSTRegistration,
+  AttendanceType,
+  Budget
 } from "./types.js";
 import { asArray, cleanResponseXml, getSingleValue, parseTallyBoolean, parseTallyNumeric } from "./xmlUtils.js";
 
@@ -92,6 +94,8 @@ const xmlParser = new XMLParser({
       "TAXUNIT",
       "VCHTYPESTAT",
       "PERIODSTAT",
+      "ATTENDANCE",
+      "BUDGET",
     ].includes(name);
   },
 });
@@ -246,7 +250,7 @@ export function parseLastAlterIds(xml: string): LastAlterIds {
  */
 export function parseExportCollection<T>(
   xml: string,
-  type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration"
+  type: "Ledger" | "Group" | "Company" | "Voucher" | "CostCentre" | "CostCategory" | "VoucherType" | "Unit" | "StockGroup" | "StockCategory" | "Godown" | "StockItem" | "Employee" | "EmployeeGroup" | "Currency" | "GSTRegistration" | "AttendanceType" | "Budget"
 ): T[] {
   const parsed = parseRawXml(xml);
   const envelope = parsed?.ENVELOPE;
@@ -259,6 +263,9 @@ export function parseExportCollection<T>(
   }
   if (type === "GSTRegistration") {
     xmlTagName = "TAXUNIT";
+  }
+  if (type === "AttendanceType") {
+    xmlTagName = "ATTENDANCE";
   }
   
   // collection elements are always arrays because we registered them in isArray
@@ -1019,6 +1026,30 @@ export function parseExportCollection<T>(
           isOtherTerritoryAssessee: detail.ISOTHTERRITORYASSESSEE ? String(getSingleValue(detail.ISOTHTERRITORYASSESSEE)) === "Yes" : undefined,
           isStateCessOn: detail.ISSTATECESSON ? String(getSingleValue(detail.ISSTATECESSON)) === "Yes" : undefined,
         }));
+      }
+    } else if (type === "AttendanceType") {
+      base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");
+      base.parent = String(getSingleValue(item.PARENT) || "");
+      base.attendanceType = getSingleValue(item.ATTENDANCEONPRODUCTION);
+      base.unit = getSingleValue(item.BASEUNITS);
+
+      const langData = parseLanguageNameList(item);
+      if (langData.languageNameList) base.languageNameList = langData.languageNameList;
+      if (langData.alias) base.alias = langData.alias;
+      if ((!base.name || base.name === "undefined") && base.languageNameList?.[0]?.names?.[0]) {
+        base.name = base.languageNameList[0].names[0];
+      }
+    } else if (type === "Budget") {
+      base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");
+      base.parent = String(getSingleValue(item.PARENT) || "");
+      base.startingFrom = item.STARTINGFROM ? String(getSingleValue(item.STARTINGFROM)) : undefined;
+      base.endingAt = item.ENDINGAT ? String(getSingleValue(item.ENDINGAT)) : undefined;
+
+      const langData = parseLanguageNameList(item);
+      if (langData.languageNameList) base.languageNameList = langData.languageNameList;
+      if (langData.alias) base.alias = langData.alias;
+      if ((!base.name || base.name === "undefined") && base.languageNameList?.[0]?.names?.[0]) {
+        base.name = base.languageNameList[0].names[0];
       }
     }
 
