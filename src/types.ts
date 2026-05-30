@@ -386,6 +386,10 @@ export interface Ledger extends BaseAliasedMasterObject {
   gstDetails?: GSTDetail[];
   hsnDetails?: HSNDetail[];
   updatedAt?: Date | string;
+  phone?: string;
+  mobile?: string;
+  contact?: string;
+  partyGstin?: string;
 }
 
 export interface CostCentre extends BaseAliasedMasterObject {

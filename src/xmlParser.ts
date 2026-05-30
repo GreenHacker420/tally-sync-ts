@@ -302,6 +302,10 @@ export function parseExportCollection<T>(
       base.ifsCode = getSingleValue(item.IFSCODE);
       base.swiftCode = getSingleValue(item.SWIFTCODE);
       base.updatedAt = getSingleValue(item.UPDATEDDATETIME);
+      base.phone = getSingleValue(item.LEDGERPHONE);
+      base.mobile = getSingleValue(item.LEDGERMOBILE);
+      base.contact = getSingleValue(item.LEDGERCONTACT);
+      base.partyGstin = getSingleValue(item.PARTYGSTIN);
       
       // parse language name list / alias
       const langData = parseLanguageNameList(item);
