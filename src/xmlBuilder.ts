@@ -575,6 +575,10 @@ function ledgerToXml(ledger: Ledger): string {
     ${ledger.branchName ? `<BRANCHNAME>${escapeXml(ledger.branchName)}</BRANCHNAME>` : ""}
     ${ledger.ifsCode ? `<IFSCODE>${escapeXml(ledger.ifsCode)}</IFSCODE>` : ""}
     ${ledger.swiftCode ? `<SWIFTCODE>${escapeXml(ledger.swiftCode)}</SWIFTCODE>` : ""}
+    ${ledger.phone ? `<LEDGERPHONE>${escapeXml(ledger.phone)}</LEDGERPHONE>` : ""}
+    ${ledger.mobile ? `<LEDGERMOBILE>${escapeXml(ledger.mobile)}</LEDGERMOBILE>` : ""}
+    ${ledger.contact ? `<LEDGERCONTACT>${escapeXml(ledger.contact)}</LEDGERCONTACT>` : ""}
+    ${ledger.partyGstin ? `<PARTYGSTIN>${escapeXml(ledger.partyGstin)}</PARTYGSTIN>` : ""}
     ${paymentDetailsXml}
     ${mailingDetailsXml}
     ${gstRegDetailsXml}

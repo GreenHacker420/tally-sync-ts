@@ -943,9 +943,17 @@ test("XML Builder - CRUD Deletion and Cancellation Actions", () => {
     name: "Maharashtra Ledger",
     group: "Sundry Debtors",
     action: "Delete",
+    phone: "123456",
+    mobile: "987654",
+    contact: "Baburao",
+    partyGstin: "27ABCDE1234F1Z5",
   };
   const ledgerXml = buildPostXml("Ledger", [ledger]);
   assert.ok(ledgerXml.includes('<LEDGER NAME="Maharashtra Ledger" ACTION="Delete">'));
+  assert.ok(ledgerXml.includes("<LEDGERPHONE>123456</LEDGERPHONE>"));
+  assert.ok(ledgerXml.includes("<LEDGERMOBILE>987654</LEDGERMOBILE>"));
+  assert.ok(ledgerXml.includes("<LEDGERCONTACT>Baburao</LEDGERCONTACT>"));
+  assert.ok(ledgerXml.includes("<PARTYGSTIN>27ABCDE1234F1Z5</PARTYGSTIN>"));
 
   const voucher: Voucher = {
     date: "2026-05-30",
