@@ -2,7 +2,7 @@ export interface RequestOptions {
   company?: string;
   fromDate?: Date | string;
   toDate?: Date | string;
-  filters?: { name: string; formula: string }[];
+  filters?: { name: string; formula?: string }[];
   fetchList?: string[];
   compute?: string[];
   computeVar?: string[];
@@ -287,6 +287,7 @@ export interface BaseObject {}
 export interface BaseTallyObject extends BaseObject {
   guid?: string;
   remoteId?: string;
+  action?: "Create" | "Alter" | "Delete" | "Cancel";
 }
 
 export interface TallyObject extends BaseTallyObject {

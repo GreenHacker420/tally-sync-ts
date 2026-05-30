@@ -692,7 +692,7 @@ test("XML Builder & Parser - GST Registration", () => {
       <BODY>
         <DATA>
           <COLLECTION>
-            <GSTREGISTRATION NAME="Maharashtra GST">
+            <TAXUNIT NAME="Maharashtra GST">
               <STATENAME>Maharashtra</STATENAME>
               <GSTREGNUMBER>27ABCDE1234F1Z5</GSTREGNUMBER>
               <ISEWAYBILLPRINTAPPLICABLE>Yes</ISEWAYBILLPRINTAPPLICABLE>
@@ -703,7 +703,7 @@ test("XML Builder & Parser - GST Registration", () => {
                 <PLACEOFSUPPLY>Maharashtra</PLACEOFSUPPLY>
                 <ISSTATECESSON>No</ISSTATECESSON>
               </GSTREGISTRATIONDETAILS.LIST>
-            </GSTREGISTRATION>
+            </TAXUNIT>
           </COLLECTION>
         </DATA>
       </BODY>
@@ -937,3 +937,24 @@ test("TallyClient - generic APIs use injected transport", async () => {
   assert.ok(transport.requests.some(xml => xml.includes("<TYPE>Ledger</TYPE>")));
   assert.ok(transport.requests.some(xml => xml.includes("<LEDGER NAME=\"X\" ACTION=\"Create\">")));
 });
+
+test("XML Builder - CRUD Deletion and Cancellation Actions", () => {
+  const ledger: Ledger = {
+    name: "Maharashtra Ledger",
+    group: "Sundry Debtors",
+    action: "Delete",
+  };
+  const ledgerXml = buildPostXml("Ledger", [ledger]);
+  assert.ok(ledgerXml.includes('<LEDGER NAME="Maharashtra Ledger" ACTION="Delete">'));
+
+  const voucher: Voucher = {
+    date: "2026-05-30",
+    voucherType: "Sales",
+    voucherNumber: "INV-99",
+    action: "Cancel",
+  };
+  const voucherXml = buildPostXml("Voucher", [voucher]);
+  assert.ok(voucherXml.includes('<VOUCHER VCHTYPE="Sales" ACTION="Cancel">'));
+  assert.ok(voucherXml.includes("<VOUCHERNUMBER>INV-99</VOUCHERNUMBER>"));
+});
+

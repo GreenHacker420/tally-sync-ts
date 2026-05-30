@@ -255,7 +255,7 @@ export class TallyClient {
   public async getGSTRegistrations(options: PaginatedRequestOptions = {}): Promise<GSTRegistration[]> {
     const filters = [...(options.filters || [])];
     if (!filters.some(f => f.name === "TaxUnitForGST")) {
-      filters.push({ name: "TaxUnitForGST", formula: "$$IsSysNameEqual:GST:$TaxType" });
+      filters.push({ name: "TaxUnitForGST" });
     }
     const xml = buildExportCollectionXml("GSTRegistration", {
       ...options,

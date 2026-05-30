@@ -58,7 +58,7 @@ export function buildExportCollectionXml(
   }
   const filterTags = filters.map(f => `<FILTERS>${escapeXml(f.name)}</FILTERS>`).join("\n");
   const systemFilters = filters
-    ? filters.map(f => `<SYSTEM TYPE="Formulae" NAME="${escapeXml(f.name)}">${escapeXml(f.formula)}</SYSTEM>`).join("\n")
+    ? filters.filter(f => f.formula).map(f => `<SYSTEM TYPE="Formulae" NAME="${escapeXml(f.name)}">${escapeXml(f.formula)}</SYSTEM>`).join("\n")
     : "";
   const computeTags = [
     ...(options.compute || []),
@@ -405,7 +405,7 @@ export function buildLastAlterIdsRequestXml(options: RequestOptions = {}): strin
  * Maps standard JS models into raw Tally XML entries for import
  */
 function ledgerToXml(ledger: Ledger): string {
-  const action = ledger.masterId ? "Alter" : "Create";
+  const action = ledger.action || (ledger.masterId ? "Alter" : "Create");
 
   let languageListXml = "";
   if (ledger.languageNameList && ledger.languageNameList.length > 0) {
@@ -585,7 +585,7 @@ function ledgerToXml(ledger: Ledger): string {
 }
 
 function groupToXml(group: Group): string {
-  const action = group.masterId ? "Alter" : "Create";
+  const action = group.action || (group.masterId ? "Alter" : "Create");
 
   let languageListXml = "";
   if (group.languageNameList && group.languageNameList.length > 0) {
@@ -625,7 +625,7 @@ function groupToXml(group: Group): string {
 }
 
 function costCentreToXml(cc: CostCentre): string {
-  const action = cc.masterId ? "Alter" : "Create";
+  const action = cc.action || (cc.masterId ? "Alter" : "Create");
 
   let languageListXml = "";
   if (cc.languageNameList && cc.languageNameList.length > 0) {
@@ -660,7 +660,7 @@ function costCentreToXml(cc: CostCentre): string {
 }
 
 function costCategoryToXml(cat: CostCategory): string {
-  const action = cat.masterId ? "Alter" : "Create";
+  const action = cat.action || (cat.masterId ? "Alter" : "Create");
 
   let languageListXml = "";
   if (cat.languageNameList && cat.languageNameList.length > 0) {
@@ -693,7 +693,7 @@ function costCategoryToXml(cat: CostCategory): string {
 }
 
 function voucherTypeToXml(vt: VoucherType): string {
-  const action = vt.masterId ? "Alter" : "Create";
+  const action = vt.action || (vt.masterId ? "Alter" : "Create");
 
   let languageListXml = "";
   if (vt.languageNameList && vt.languageNameList.length > 0) {
@@ -814,7 +814,7 @@ function voucherTypeToXml(vt: VoucherType): string {
 }
 
 function voucherToXml(voucher: Voucher): string {
-  const action = voucher.masterId ? "Alter" : "Create";
+  const action = voucher.action || (voucher.masterId ? "Alter" : "Create");
   const dateStr = formatDateForTally(voucher.date);
 
   const ledgerEntriesXml = voucher.ledgerEntries
@@ -960,7 +960,7 @@ function hsnDetailsListToXml(hsnDetails: HSNDetail[] | undefined): string {
 }
 
 function companyToXml(company: Company): string {
-  const action = company.masterId ? "Alter" : "Create";
+  const action = company.action || (company.masterId ? "Alter" : "Create");
   return `
   <COMPANY NAME="${escapeXml(company.name)}" ACTION="${action}">
     <NAME>${escapeXml(company.name)}</NAME>
@@ -993,7 +993,7 @@ function companyToXml(company: Company): string {
 }
 
 function unitToXml(unit: Unit): string {
-  const action = unit.masterId ? "Alter" : "Create";
+  const action = unit.action || (unit.masterId ? "Alter" : "Create");
   return `
   <UNIT NAME="${escapeXml(unit.name)}" ACTION="${action}">
     <NAME>${escapeXml(unit.name)}</NAME>
@@ -1009,7 +1009,7 @@ function unitToXml(unit: Unit): string {
 }
 
 function stockGroupToXml(sg: StockGroup): string {
-  const action = sg.masterId ? "Alter" : "Create";
+  const action = sg.action || (sg.masterId ? "Alter" : "Create");
   let languageListXml = "";
   if (sg.languageNameList && sg.languageNameList.length > 0) {
     languageListXml = sg.languageNameList.map(lang => `
@@ -1043,7 +1043,7 @@ function stockGroupToXml(sg: StockGroup): string {
 }
 
 function stockCategoryToXml(sc: StockCategory): string {
-  const action = sc.masterId ? "Alter" : "Create";
+  const action = sc.action || (sc.masterId ? "Alter" : "Create");
   let languageListXml = "";
   if (sc.languageNameList && sc.languageNameList.length > 0) {
     languageListXml = sc.languageNameList.map(lang => `
@@ -1073,7 +1073,7 @@ function stockCategoryToXml(sc: StockCategory): string {
 }
 
 function godownToXml(gd: Godown): string {
-  const action = gd.masterId ? "Alter" : "Create";
+  const action = gd.action || (gd.masterId ? "Alter" : "Create");
   let languageListXml = "";
   if (gd.languageNameList && gd.languageNameList.length > 0) {
     languageListXml = gd.languageNameList.map(lang => `
@@ -1103,7 +1103,7 @@ function godownToXml(gd: Godown): string {
 }
 
 function stockItemToXml(si: StockItem): string {
-  const action = si.masterId ? "Alter" : "Create";
+  const action = si.action || (si.masterId ? "Alter" : "Create");
   let languageListXml = "";
   if (si.languageNameList && si.languageNameList.length > 0) {
     languageListXml = si.languageNameList.map(lang => `
@@ -1205,7 +1205,7 @@ function employeeGroupToXml(eg: EmployeeGroup): string {
 }
 
 function currencyToXml(cur: Currency): string {
-  const action = cur.masterId ? "Alter" : "Create";
+  const action = cur.action || (cur.masterId ? "Alter" : "Create");
   return `
   <CURRENCY NAME="${escapeXml(cur.name)}" ACTION="${action}">
     <ORIGINALNAME>${escapeXml(cur.name)}</ORIGINALNAME>
@@ -1214,7 +1214,7 @@ function currencyToXml(cur: Currency): string {
 }
 
 function gstRegistrationToXml(reg: GSTRegistration): string {
-  const action = reg.masterId ? "Alter" : "Create";
+  const action = reg.action || (reg.masterId ? "Alter" : "Create");
   const languageListXml = reg.languageNameList && reg.languageNameList.length > 0
     ? reg.languageNameList.map(lang => `
     <LANGUAGENAME.LIST>

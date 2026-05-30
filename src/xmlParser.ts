@@ -89,6 +89,7 @@ const xmlParser = new XMLParser({
       "CURRENCY",
       "GSTREGISTRATION",
       "GSTREGISTRATIONDETAILS.LIST",
+      "TAXUNIT",
       "VCHTYPESTAT",
       "PERIODSTAT",
     ].includes(name);
@@ -256,9 +257,12 @@ export function parseExportCollection<T>(
   if (type === "Employee" || type === "EmployeeGroup") {
     xmlTagName = "COSTCENTRE";
   }
+  if (type === "GSTRegistration") {
+    xmlTagName = "TAXUNIT";
+  }
   
   // collection elements are always arrays because we registered them in isArray
-  const rawList = collection[xmlTagName] || envelope?.BODY?.DATA?.[xmlTagName] || [];
+  const rawList = collection[xmlTagName] || collection[type.toUpperCase()] || envelope?.BODY?.DATA?.[xmlTagName] || envelope?.BODY?.DATA?.[type.toUpperCase()] || [];
   
   return rawList.map((item: any) => {
     const base: any = {
