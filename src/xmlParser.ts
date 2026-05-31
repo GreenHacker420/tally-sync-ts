@@ -460,6 +460,26 @@ export function parseExportCollection<T>(
           return mappingAddr;
         });
       }
+
+      // Fallback for partyGstin if not found at top level but present in nested registration details
+      if (!base.partyGstin) {
+        if (base.gstRegistrationDetails && base.gstRegistrationDetails.length > 0) {
+          for (const reg of base.gstRegistrationDetails) {
+            if (reg.gstin) {
+              base.partyGstin = reg.gstin;
+              break;
+            }
+          }
+        }
+        if (!base.partyGstin && base.addresses && base.addresses.length > 0) {
+          for (const addr of base.addresses) {
+            if (addr.gstin) {
+              base.partyGstin = addr.gstin;
+              break;
+            }
+          }
+        }
+      }
     } else if (type === "Group") {
       base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");
       base.parent = String(getSingleValue(item.PARENT) || "");

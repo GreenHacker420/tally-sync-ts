@@ -70,7 +70,7 @@ export function buildExportCollectionXml(
     ...(options.computeVar || []),
     ...(paginationEnabled ? ["vLineIndex: Number : IF $$IsEmpty:##vLineIndex THEN 1 ELSE ##vLineIndex + 1"] : []),
   ].map(c => `<COMPUTEVAR>${escapeXml(c)}</COMPUTEVAR>`).join("\n");
-  const childOfTag = options.childOf ? `<CHILDOF>${escapeXml(options.childOf)}</CHILDOF>` : "";
+  const childOfTag = options.childOf ? `<CHILDOF>"${escapeXml(options.childOf)}"</CHILDOF>` : "";
   const belongsToTag = options.belongsTo ? `<BELONGSTO>${options.belongsTo}</BELONGSTO>` : "";
   const totalCountReportTags = paginationEnabled && !options.disableCountTag ? `
           <PART NAME="TC_ObjectsCount">

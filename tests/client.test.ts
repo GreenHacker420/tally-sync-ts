@@ -652,7 +652,7 @@ test("XML Builder - paginated export options", () => {
   assert.ok(xml.includes("<COMPUTE>ClosingBalance : $ClosingBalance</COMPUTE>"));
   assert.ok(xml.includes("<COMPUTEVAR>SomeVar : String : &quot;X&quot;</COMPUTEVAR>"));
   assert.ok(xml.includes("<COMPUTE>LineIndex : ##vLineIndex</COMPUTE>"));
-  assert.ok(xml.includes("<CHILDOF>Sundry Debtors</CHILDOF>"));
+  assert.ok(xml.includes("<CHILDOF>\"Sundry Debtors\"</CHILDOF>"));
   assert.ok(xml.includes("<BELONGSTO>Yes</BELONGSTO>"));
   assert.ok(xml.includes("<FILTERS>OnlyActive</FILTERS>"));
   assert.ok(xml.includes("<FILTERS>TC_PaginationFilter</FILTERS>"));
