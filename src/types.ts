@@ -390,6 +390,7 @@ export interface Ledger extends BaseAliasedMasterObject {
   mobile?: string;
   contact?: string;
   partyGstin?: string;
+  state?: string;
 }
 
 export interface CostCentre extends BaseAliasedMasterObject {

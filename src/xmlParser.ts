@@ -461,24 +461,13 @@ export function parseExportCollection<T>(
         });
       }
 
-      // Fallback for partyGstin if not found at top level but present in nested registration details
+      // Highly optimized single-pass flattening fallback for state and partyGstin
+      const flatObj = flattenObject(item);
       if (!base.partyGstin) {
-        if (base.gstRegistrationDetails && base.gstRegistrationDetails.length > 0) {
-          for (const reg of base.gstRegistrationDetails) {
-            if (reg.gstin) {
-              base.partyGstin = reg.gstin;
-              break;
-            }
-          }
-        }
-        if (!base.partyGstin && base.addresses && base.addresses.length > 0) {
-          for (const addr of base.addresses) {
-            if (addr.gstin) {
-              base.partyGstin = addr.gstin;
-              break;
-            }
-          }
-        }
+        base.partyGstin = getOptimizedValue(flatObj, "gstin") || undefined;
+      }
+      if (!base.state) {
+        base.state = getOptimizedValue(flatObj, "state") || undefined;
       }
     } else if (type === "Group") {
       base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");
@@ -1226,3 +1215,70 @@ export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeS
       };
     });
 }
+
+const PATH_LOOKUPS: Record<string, string[]> = {
+  name: ["@_name", "name"],
+  parent: ["parent", "group"],
+  phone: ["ledgerphone", "phonenumber", "phone"],
+  mobile: ["ledgermobile", "mobilenumber", "mobile"],
+  contact: ["ledgercontact", "contactperson", "contact"],
+  gstin: ["ledgstregdetails.list.gstin", "ledmultiaddresslist.list.gstin", "partygstin", "ledgstin", "gstregnumber"],
+  email: ["email", "emailaddress"],
+  state: ["ledmailingdetails.list.state", "ledgstregdetails.list.state", "ledmultiaddresslist.list.state", "statename", "priorstatename", "ledstate"],
+  pincode: ["ledmailingdetails.list.pincode", "ledmultiaddresslist.list.pincode", "pincode", "oldpincode"]
+};
+
+function flattenObject(obj: any, prefix = "", result: Record<string, string> = {}): Record<string, string> {
+  if (obj === null || obj === undefined) return result;
+  
+  if (typeof obj !== "object") {
+    result[prefix.toLowerCase()] = String(obj).trim();
+    return result;
+  }
+  
+  if (Array.isArray(obj)) {
+    obj.forEach((item, index) => {
+      flattenObject(item, prefix ? `${prefix}.${index}` : String(index), result);
+      flattenObject(item, prefix, result);
+    });
+    return result;
+  }
+  
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    const newPrefix = prefix ? `${prefix}.${key}` : key;
+    
+    if (val && typeof val === "object") {
+      if (val["#text"] !== undefined) {
+        result[newPrefix.toLowerCase()] = String(val["#text"]).trim();
+      } else {
+        flattenObject(val, newPrefix, result);
+      }
+    } else if (val !== null && val !== undefined) {
+      result[newPrefix.toLowerCase()] = String(val).trim();
+    }
+  }
+  
+  return result;
+}
+
+function getOptimizedValue(flatObj: Record<string, string>, field: string): string {
+  const normalizedField = field.toLowerCase();
+  const candidatePaths = PATH_LOOKUPS[normalizedField] || [normalizedField];
+  
+  for (const path of candidatePaths) {
+    if (flatObj[path]) return flatObj[path];
+  }
+  
+  for (const path of candidatePaths) {
+    const suffix = `.${path}`;
+    for (const flatKey of Object.keys(flatObj)) {
+      if (flatKey === path || flatKey.endsWith(suffix)) {
+        return flatObj[flatKey];
+      }
+    }
+  }
+  
+  return "";
+}
+
