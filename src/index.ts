@@ -20,6 +20,7 @@ export {
   parseTallyNumeric,
   asArray,
   parseRawXml,
+  parseExportCollection,
   parseMasterStatistics,
   parseVoucherStatistics,
   parseCountResponse,

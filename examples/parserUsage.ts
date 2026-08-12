@@ -1,8 +1,27 @@
-import { readFileSync } from "node:fs";
 import { parseExportCollection, type Voucher } from "../src/index.js";
 
-const xml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Voucher/Vouchers_Sales_complete.xml", "utf8");
+const xml = `
+<ENVELOPE>
+  <BODY>
+    <DATA>
+      <COLLECTION>
+        <VOUCHER>
+          <DATE>20260813</DATE>
+          <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+          <VOUCHERNUMBER>INV-1001</VOUCHERNUMBER>
+          <PARTYLEDGERNAME>Demo Customer</PARTYLEDGERNAME>
+          <ALLLEDGERENTRIES.LIST>
+            <LEDGERNAME>Demo Customer</LEDGERNAME>
+            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+            <AMOUNT>1180</AMOUNT>
+          </ALLLEDGERENTRIES.LIST>
+        </VOUCHER>
+      </COLLECTION>
+    </DATA>
+  </BODY>
+</ENVELOPE>`;
+
 const vouchers = parseExportCollection<Voucher>(xml, "Voucher");
 
-console.log(`Parsed ${vouchers.length} vouchers`);
+console.log(`Parsed ${vouchers.length} voucher(s)`);
 console.log(vouchers[0]?.voucherType, vouchers[0]?.ledgerEntries?.[0]?.ledgerName);

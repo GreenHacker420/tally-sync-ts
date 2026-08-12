@@ -34,12 +34,11 @@ export const PERIODICITY = {
   DAY: "Day",
   WEEK: "Week",
   FORTNIGHT: "Fortnight",
-  THREE_MONTH: "3 Month",
-  SIX_MONTH: "6 Month",
+  THREE_MONTH: "Three Month",
+  SIX_MONTH: "Six Month",
   YEAR: "Year",
 } as const;
 
-// Default TDL dynamic functions used in requests
 export const DEFAULT_TDL_FUNCTIONS = [
   {
     name: "TC_GetBooleanFromLogicField",

@@ -64,8 +64,9 @@ export class FetchTallyTransport implements TallyTransport {
 }
 
 function cleanUrl(url: string): string {
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    return `http://${url}`;
-  }
-  return url;
+  const normalized = url.startsWith("http://") || url.startsWith("https://")
+    ? url
+    : `http://${url}`;
+
+  return normalized.replace(/\/+$/, "");
 }
