@@ -11,16 +11,17 @@ export {
   buildMasterStatisticsXml,
   buildVoucherStatisticsXml,
   buildCountRequestXml,
-  buildPeriodicVoucherStatisticsXml
+  buildPeriodicVoucherStatisticsXml,
+  voucherToXml
 } from "./xmlBuilder.js";
 export {
   cleanResponseXml,
+  parseExportCollection,
   getSingleValue,
   parseTallyBoolean,
   parseTallyNumeric,
   asArray,
   parseRawXml,
-  parseExportCollection,
   parseMasterStatistics,
   parseVoucherStatistics,
   parseCountResponse,

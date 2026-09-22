@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { escapeXml, formatDateForTally, buildExportCollectionXml, buildPostXml, buildMasterStatisticsXml, buildVoucherStatisticsXml, buildCountRequestXml, buildPeriodicVoucherStatisticsXml } from "../src/xmlBuilder.js";
 import { parseActiveCompany, parseLicenseInfo, parseLastAlterIds, parseExportCollection, parsePostResponse, checkTallyError, parseMasterStatistics, parseVoucherStatistics, parseCountResponse, parsePeriodicVoucherStatistics, parseTallyBoolean, parseTallyNumeric, asArray } from "../src/xmlParser.js";
 import { TallyClient } from "../src/client.js";
@@ -893,7 +893,11 @@ test("XML Builder & Parser - deep voucher allocations", () => {
   assert.strictEqual(parsed[0].inventoryAllocations?.[0].gstRateDetails?.[0].rate, 9);
 });
 
-test("XML Parser - C# fixture samples", () => {
+test("XML Parser - C# fixture samples", (t) => {
+  if (!existsSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Ledger/ledger_sample_data.xml")) {
+    t.skip("C# fixture samples directory not present in checkout");
+    return;
+  }
   const ledgerXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Ledger/ledger_sample_data.xml", "utf8");
   const groupXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Group/Groups_complete.xml", "utf8");
   const currencyXml = readFileSync("../src/Tests/TallyConnector.XmlTests/Resources/TallyPrime/V6/Currency/Currencys_complete.xml", "utf8");

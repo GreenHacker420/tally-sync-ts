@@ -63,8 +63,21 @@ import {
 export class TallyClient {
   private transport: TallyTransport;
 
-  constructor(baseURL = "http://localhost", port = 9000, timeoutMinutes = 3, transport?: TallyTransport) {
-    this.transport = transport || new FetchTallyTransport({ baseURL, port, timeoutMinutes });
+  constructor(
+    baseURLOrOptions: string | { baseURL?: string; host?: string; port?: number; timeoutMinutes?: number } = "http://localhost",
+    port = 9000,
+    timeoutMinutes = 3,
+    transport?: TallyTransport
+  ) {
+    if (typeof baseURLOrOptions === "object" && baseURLOrOptions !== null) {
+      const opts = baseURLOrOptions;
+      const url = opts.baseURL || (opts.host ? (opts.host.startsWith("http") ? opts.host : `http://${opts.host}`) : "http://localhost");
+      const p = opts.port || 9000;
+      const t = opts.timeoutMinutes || 3;
+      this.transport = transport || new FetchTallyTransport({ baseURL: url, port: p, timeoutMinutes: t });
+    } else {
+      this.transport = transport || new FetchTallyTransport({ baseURL: baseURLOrOptions, port, timeoutMinutes });
+    }
   }
 
   public setupTallyService(url: string, port: number): void {

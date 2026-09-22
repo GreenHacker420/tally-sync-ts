@@ -1110,10 +1110,19 @@ export function parsePostResponse(xml: string): PostResponse[] {
   else if (altered > 0) msg = "Altered successfully";
   else if (deleted > 0) msg = "Deleted successfully";
 
+  const errors = Number(getSingleValue(importResult.ERRORS) || 0);
+  const cancelled = Number(getSingleValue(importResult.CANCELLED) || 0);
+
   return [{
-    status: "success",
-    message: msg,
+    status: errors > 0 ? "failure" : "success",
+    message: errors > 0 ? "Import completed with errors" : msg,
     masterId: lastVchId,
+    lastVchId,
+    created,
+    altered,
+    deleted,
+    cancelled,
+    errors,
   }];
 }
 

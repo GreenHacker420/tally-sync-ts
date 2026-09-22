@@ -1,3 +1,18 @@
+
+export type VoucherAction = "Create" | "Alter" | "Cancel";
+
+export type VoucherIdentity =
+  | { mode: "CREATE"; remoteId: string }
+  | { mode: "MASTER_ID"; masterId: number; date?: string; voucherType?: string }
+  | { mode: "GUID"; guid: string }
+  | { mode: "VOUCHER_KEY"; date: string; voucherType: string; voucherNumber: string };
+
+export interface VoucherXmlOptions {
+  action?: VoucherAction;
+  identity?: VoucherIdentity;
+  companyName?: string;
+}
+
 export interface RequestOptions {
   company?: string;
   fromDate?: Date | string;
@@ -65,6 +80,12 @@ export interface PostResponse {
   status: "success" | "failure";
   message: string;
   masterId?: number;
+  lastVchId?: number;
+  created?: number;
+  altered?: number;
+  deleted?: number;
+  cancelled?: number;
+  errors?: number;
   alteredId?: number;
   objectType?: string;
   name?: string;
@@ -596,6 +617,10 @@ export interface EWayBillDetails {
 }
 
 export interface Voucher extends TallyObject {
+  remoteId?: string;
+  guid?: string;
+  identity?: VoucherIdentity;
+  isCancelled?: boolean;
   date: Date | string;
   voucherType: string;
   voucherNumber?: string;

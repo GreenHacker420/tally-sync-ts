@@ -23,7 +23,10 @@ import {
   GSTRegistration,
   PeriodicVoucherStatisticsOptions,
   AttendanceType,
-  Budget
+  Budget,
+  VoucherAction,
+  VoucherIdentity,
+  VoucherXmlOptions
 } from "./types.js";
 import { DEFAULT_TDL_FUNCTIONS } from "./constants.js";
 import { escapeXml, formatAmountForTally, formatBoolForTally, formatDateForTally } from "./xmlUtils.js";
@@ -819,9 +822,46 @@ function voucherTypeToXml(vt: VoucherType): string {
   </VOUCHERTYPE>`;
 }
 
-function voucherToXml(voucher: Voucher): string {
-  const action = voucher.action || (voucher.masterId ? "Alter" : "Create");
-  const dateStr = formatDateForTally(voucher.date);
+export function voucherToXml(
+  voucher: Voucher,
+  optionsOrAction?: VoucherAction | VoucherXmlOptions
+): string {
+  const options: VoucherXmlOptions =
+    typeof optionsOrAction === "string"
+      ? { action: optionsOrAction }
+      : optionsOrAction || {};
+
+  const action = options.action || voucher.action || (voucher.masterId ? "Alter" : "Create");
+  const identity =
+    options.identity ||
+    voucher.identity ||
+    (voucher.remoteId
+      ? { mode: "CREATE", remoteId: voucher.remoteId }
+      : voucher.masterId && action !== "Create"
+      ? { mode: "MASTER_ID", masterId: voucher.masterId }
+      : voucher.guid && action !== "Create"
+      ? { mode: "GUID", guid: voucher.guid }
+      : undefined);
+
+  let voucherTagAttrs = `VCHTYPE="${escapeXml(voucher.voucherType)}" ACTION="${action}"`;
+
+  if (identity) {
+    switch (identity.mode) {
+      case "CREATE":
+        voucherTagAttrs += ` REMOTEID="${escapeXml(identity.remoteId)}"`;
+        break;
+      case "MASTER_ID":
+        voucherTagAttrs += ` TAGNAME="MASTER ID" TAGVALUE="${identity.masterId}"`;
+        break;
+      case "GUID":
+        voucherTagAttrs += ` TAGNAME="GUID" TAGVALUE="${escapeXml(identity.guid)}"`;
+        break;
+      case "VOUCHER_KEY":
+        break;
+    }
+  }
+
+    const dateStr = formatDateForTally(voucher.date);
 
   const ledgerEntriesXml = voucher.ledgerEntries
     ? voucher.ledgerEntries.map(e => `
@@ -890,7 +930,9 @@ function voucherToXml(voucher: Voucher): string {
     : "";
 
   return `
-  <VOUCHER VCHTYPE="${escapeXml(voucher.voucherType)}" ACTION="${action}">
+  <VOUCHER ${voucherTagAttrs}>
+    ${identity?.mode === "CREATE" ? `<REMOTEID>${escapeXml(identity.remoteId)}</REMOTEID>` : (voucher.remoteId ? `<REMOTEID>${escapeXml(voucher.remoteId)}</REMOTEID>` : "")}
+    ${(action === "Cancel" || voucher.isCancelled) ? `<ISCANCELLED>Yes</ISCANCELLED>` : ""}
     <DATE>${dateStr}</DATE>
     <VOUCHERTYPENAME>${escapeXml(voucher.voucherType)}</VOUCHERTYPENAME>
     ${voucher.voucherNumber ? `<VOUCHERNUMBER>${escapeXml(voucher.voucherNumber)}</VOUCHERNUMBER>` : ""}
@@ -1388,13 +1430,14 @@ export function buildPostXml(
     innerXml = objects.map(o => budgetToXml(o)).join("");
   }
 
+  const typeId = type === "Voucher" ? "Vouchers" : "All Masters";
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>IMPORT</TALLYREQUEST>
     <TYPE>DATA</TYPE>
-    <ID>All Masters</ID>
+    <ID>${typeId}</ID>
   </HEADER>
   <BODY>
     <DESC>
