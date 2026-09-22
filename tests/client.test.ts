@@ -1072,13 +1072,13 @@ test("Client - getReport & getGSTComputation XML generation", async () => {
   };
   const mockClient = new TallyClient("http://localhost", 9000, 3, mockTransport);
   await mockClient.getGSTComputation({
-    company: "Chirag Enterprises",
+    company: "Demo Enterprises",
     fromDate: "2026-04-01",
     toDate: "2026-05-30"
   });
 
   assert.ok(requestedXml.includes("<ID>GSTComputation</ID>"));
-  assert.ok(requestedXml.includes("<SVCURRENTCOMPANY>Chirag Enterprises</SVCURRENTCOMPANY>"));
+  assert.ok(requestedXml.includes("<SVCURRENTCOMPANY>Demo Enterprises</SVCURRENTCOMPANY>"));
   assert.ok(requestedXml.includes("<SVFROMDATE>20260401</SVFROMDATE>"));
   assert.ok(requestedXml.includes("<SVTODATE>20260530</SVTODATE>"));
 });

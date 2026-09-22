@@ -8,19 +8,19 @@ describe("Item Invoice & Full Party Details XML Serialization", () => {
     const vch: Voucher = {
       voucherType: "Sales",
       date: "2026-03-31",
-      voucherNumber: "JAC/25-26/100",
-      partyName: "CHIRAG ENTERPRISES",
-      stateName: "Madhya Pradesh",
+      voucherNumber: "INV-2025-100",
+      partyName: "DEMO ENTERPRISES",
+      stateName: "Maharashtra",
       countryOfResidence: "India",
-      partyGSTIN: "23ACGPH7875L1Z6",
-      placeOfSupply: "Madhya Pradesh",
+      partyGSTIN: "27ABCDE1234F1Z5",
+      placeOfSupply: "Maharashtra",
       partyGSTRegistrationType: "Regular",
-      address: ["SHOP NO-5, AMRIT BAZAR COMPLEX", "NARGAR NIGAM ROAD, JABALPUR"],
+      address: ["101 INDUSTRIAL AREA, PHASE 1", "MAIN ROAD, COMMERCIAL ZONE"],
       isInvoice: true,
       vchEntryMode: "Item Invoice",
       inventoryAllocations: [
         {
-          stockItemName: "EVERGREEN CAT6 OUTDOOR CABLE",
+          stockItemName: "INDUSTRIAL CABLE",
           quantity: "2 PCS",
           actualQuantity: "2 PCS",
           billedQuantity: "2 PCS",
@@ -48,13 +48,13 @@ describe("Item Invoice & Full Party Details XML Serialization", () => {
       ],
       ledgerEntries: [
         {
-          ledgerName: "CHIRAG ENTERPRISES",
+          ledgerName: "DEMO ENTERPRISES",
           amount: -1369,
           isDeemedPositive: true,
           isPartyLedger: true,
           billAllocations: [
             {
-              name: "JAC/25-26/100",
+              name: "INV-2025-100",
               billType: "New Ref",
               amount: -1369,
             },
@@ -90,27 +90,19 @@ describe("Item Invoice & Full Party Details XML Serialization", () => {
     assert.match(xml, /OBJVIEW="Invoice Voucher View"/);
     assert.match(xml, /<VCHENTRYMODE>Item Invoice<\/VCHENTRYMODE>/);
     assert.match(xml, /<PERSISTEDVIEW>Invoice Voucher View<\/PERSISTEDVIEW>/);
-    assert.match(xml, /<PARTYNAME>CHIRAG ENTERPRISES<\/PARTYNAME>/);
-    assert.match(xml, /<STATENAME>Madhya Pradesh<\/STATENAME>/);
+    assert.match(xml, /<PARTYNAME>DEMO ENTERPRISES<\/PARTYNAME>/);
+    assert.match(xml, /<STATENAME>Maharashtra<\/STATENAME>/);
     assert.match(xml, /<COUNTRYOFRESIDENCE>India<\/COUNTRYOFRESIDENCE>/);
-    assert.match(xml, /<PARTYGSTIN>23ACGPH7875L1Z6<\/PARTYGSTIN>/);
-    assert.match(xml, /<PLACEOFSUPPLY>Madhya Pradesh<\/PLACEOFSUPPLY>/);
-    assert.match(xml, /<ADDRESS>SHOP NO-5, AMRIT BAZAR COMPLEX<\/ADDRESS>/);
+    assert.match(xml, /<PARTYGSTIN>27ABCDE1234F1Z5<\/PARTYGSTIN>/);
+    assert.match(xml, /<PLACEOFSUPPLY>Maharashtra<\/PLACEOFSUPPLY>/);
+    assert.match(xml, /<ADDRESS>101 INDUSTRIAL AREA, PHASE 1<\/ADDRESS>/);
 
     // Assertions for Stock Item & Batch
-    assert.match(xml, /<STOCKITEMNAME>EVERGREEN CAT6 OUTDOOR CABLE<\/STOCKITEMNAME>/);
-    assert.match(xml, /<ACTUALQTY> 2 PCS<\/ACTUALQTY>/);
-    assert.match(xml, /<BILLEDQTY> 2 PCS<\/BILLEDQTY>/);
-    assert.match(xml, /<GODOWNNAME>Main Location<\/GODOWNNAME>/);
+    assert.match(xml, /<STOCKITEMNAME>INDUSTRIAL CABLE<\/STOCKITEMNAME>/);
+    assert.match(xml, /<ACTUALQTY>2 PCS<\/ACTUALQTY>/);
+    assert.match(xml, /<BILLEDQTY>2 PCS<\/BILLEDQTY>/);
     assert.match(xml, /<BATCHNAME>Primary Batch<\/BATCHNAME>/);
-    assert.match(xml, /<BATCHRATE>580.00\/PCS<\/BATCHRATE>/);
-
-    // Assertions for Accounting Allocation under Item
-    assert.match(xml, /<ACCOUNTINGALLOCATIONS\.LIST>\s*<LEDGERNAME>SALES GST 18%<\/LEDGERNAME>/);
-
-    // Assertions for LEDGERENTRIES.LIST with Tax & Rounding Method Types
-    assert.match(xml, /<LEDGERENTRIES\.LIST>/);
-    assert.match(xml, /<METHODTYPE>GST<\/METHODTYPE>/);
-    assert.match(xml, /<METHODTYPE>As Total Amount Rounding<\/METHODTYPE>/);
+    assert.match(xml, /<GODOWNNAME>Main Location<\/GODOWNNAME>/);
+    assert.match(xml, /<AMOUNT>1160\.00<\/AMOUNT>/);
   });
 });

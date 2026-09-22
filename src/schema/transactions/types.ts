@@ -1,3 +1,4 @@
+import type { VoucherTags } from "../catalog/tallyTagsCatalog.js";
 import { TallyObject } from "../common/base.js";
 import { TallyLogical, TallyQuantity, TallyRate, TallyAmount, TallyDateInput } from "../../xml/values.js";
 import { TallyUnknownFields } from "../../xml/types.js";
@@ -283,6 +284,7 @@ export interface LedgerEntry {
 }
 
 export interface Voucher extends TallyObject {
+  tags?: VoucherTags;
   date: string;
   effectiveDate?: string;
   voucherType: string;

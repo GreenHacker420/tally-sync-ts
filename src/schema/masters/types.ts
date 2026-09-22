@@ -1,3 +1,4 @@
+import type { LedgerTags, StockItemTags, CompanyTags } from "../catalog/tallyTagsCatalog.js";
 import { BaseAliasedMasterObject, TallyObject } from "../common/base.js";
 import {
   MultiAddress,
@@ -12,6 +13,7 @@ import { TallyAmount } from "../../xml/values.js";
 import { TallyUnknownFields } from "../../xml/types.js";
 
 export interface Company extends TallyObject {
+  tags?: CompanyTags;
   name: string;
   startingFrom?: string;
   booksBeginningFrom?: string;
@@ -63,6 +65,11 @@ export interface Group extends BaseAliasedMasterObject {
 }
 
 export interface Ledger extends BaseAliasedMasterObject {
+  tags?: LedgerTags;
+  msmeRegNumber?: string;
+  msmeEnterpriseType?: "Micro" | "Small" | "Medium" | "Non-MSME" | string;
+  msmeRegDate?: string;
+  msmeStatus?: string;
   isCreditCheck?: boolean;
   bankName?: string;
   accountNumber?: string;
@@ -276,6 +283,7 @@ export interface ComponentList {
 }
 
 export interface StockItem extends BaseAliasedMasterObject {
+  tags?: StockItemTags;
   baseUnit: string;
   additionalUnits?: string;
   stockGroup?: string;

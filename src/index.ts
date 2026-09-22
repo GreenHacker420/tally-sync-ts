@@ -60,3 +60,12 @@ export function voucherToXml(vch: any, options: any = {}): string {
 
 // Backward-compatible escapeXml alias
 export { escapeXmlText as escapeXml } from "./xml/escaping.js";
+
+// SQLite Mirror Engine
+export * from "./sqlite/index.js";
+
+// Statutory GST, MSME & ERP Reporting Analytics
+export * from "./analytics/index.js";
+
+// 808 Tally XML Tags Catalog
+export * from "./schema/catalog/tallyTagsCatalog.js";

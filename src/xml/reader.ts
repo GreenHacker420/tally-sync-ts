@@ -105,6 +105,19 @@ export class TallyReader {
     return undefined;
   }
 
+  /**
+   * Returns all upper-cased tags from this node
+   */
+  getAllTags(): Record<string, unknown> {
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of this.upperMap.entries()) {
+      if (!k.startsWith("@_") && !k.startsWith("?")) {
+        res[k] = v;
+      }
+    }
+    return res;
+  }
+
   collectUnknown(knownTags: ReadonlySet<string>): TallyUnknownFields | undefined {
     const unknown: Record<string, unknown> = {};
     let count = 0;
