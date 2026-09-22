@@ -38,14 +38,14 @@ export function formatAmountForTally(amount: number | TallyAmount | undefined | 
   if (amount === undefined || amount === null) return "";
   if (typeof amount === "number") return String(amount);
 
-  if (amount.forexAmount !== undefined && amount.forexCurrency) {
+  if (((amount as any).forexAmount ?? (amount as any).forexValue) !== undefined && amount.forexCurrency) {
     const rate = amount.rateOfExchange ? ` @ ${amount.rateOfExchange}/${amount.forexCurrency}` : "";
     const currencyStr = amount.currency ? ` = ${amount.currency}` : "";
-    return `${amount.forexCurrency} ${amount.forexAmount}${rate}${currencyStr} ${amount.amount}`;
+    return `${amount.forexCurrency} ${((amount as any).forexAmount ?? (amount as any).forexValue)}${rate}${currencyStr} ${((amount as any).amount ?? (amount as any).value)}`;
   }
 
-  let val = amount.amount;
-  if (amount.isDebit) val = -Math.abs(val);
+  let val = (amount as any).value ?? (amount as any).amount ?? 0;
+  if ((amount as any).isDebit) val = -Math.abs(val);
   return String(val);
 }
 

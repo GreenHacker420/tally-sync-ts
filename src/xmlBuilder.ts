@@ -887,7 +887,7 @@ export function voucherToXml(
         <BILLALLOCATIONS.LIST>
           <NAME>${escapeXml(b.name)}</NAME>
           ${b.billType ? `<BILLTYPE>${escapeXml(b.billType)}</BILLTYPE>` : ""}
-          ${b.dueDate ? `<BILLCREDITPERIOD>${escapeXml(typeof b.dueDate === "object" && "text" in b.dueDate ? b.dueDate.text || b.dueDate.date : b.dueDate as any)}</BILLCREDITPERIOD>` : ""}
+          ${b.dueDate ? `<BILLCREDITPERIOD>${escapeXml(typeof b.dueDate === "object" && "text" in b.dueDate ? (b.dueDate as any).text || (b.dueDate as any).date : b.dueDate as any)}</BILLCREDITPERIOD>` : ""}
           <AMOUNT>${formatAmountForTally(b.amount)}</AMOUNT>
         </BILLALLOCATIONS.LIST>`).join("") : ""}
         ${e.costCentreAllocations ? e.costCentreAllocations.map(c => `

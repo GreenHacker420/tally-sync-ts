@@ -1,444 +1,353 @@
 import {
-  RequestOptions,
-  PaginatedRequestOptions,
-  PostRequestOptions,
-  LicenseInfo,
-  LastAlterIds,
-  PostResponse,
-  Ledger,
-  Group,
-  Voucher,
-  Company,
-  CostCentre,
-  CostCategory,
-  VoucherType,
-  Unit,
-  StockGroup,
-  StockCategory,
-  Godown,
-  StockItem,
-  Employee,
-  EmployeeGroup,
-  MasterStatistics,
-  VoucherStatistics,
-  Currency,
-  Periodicity,
-  AutoColVoucherTypeStat,
-  GSTRegistration,
-  PaginatedResponse,
-  PeriodicVoucherStatisticsOptions,
-  TallyObjectMap,
-  TallyObjectType,
-  AttendanceType,
-  Budget
-} from "./types.js";
-import { FetchTallyTransport, TallyTransport } from "./transport.js";
-import {
   buildExportCollectionXml,
-  buildLicenseInfoRequestXml,
-  buildActiveCompanyRequestXml,
-  buildLastAlterIdsRequestXml,
   buildPostXml,
+  buildCountRequestXml,
   buildMasterStatisticsXml,
   buildVoucherStatisticsXml,
-  buildCountRequestXml,
   buildPeriodicVoucherStatisticsXml,
-  escapeXml,
-  formatDateForTally
-} from "./xmlBuilder.js";
+  RequestOptions,
+  PaginatedRequestOptions,
+  PostRequestOptions
+} from "./tdl/builders.js";
 import {
-  parseActiveCompany,
-  parseLicenseInfo,
-  parseLastAlterIds,
   parseExportCollection,
   parsePostResponse,
-  checkTallyError,
-  parseRawXml,
+  parseCountResponse,
   parseMasterStatistics,
   parseVoucherStatistics,
-  parseCountResponse,
-  parsePeriodicVoucherStatistics
+  parsePeriodicVoucherStatistics,
+  parseRawXml,
+  checkTallyError,
+  PostResponse,
+  MasterStatistics,
+  VoucherStatistics,
+  PeriodicVoucherStat,
+  AutoColVoucherTypeStat,
 } from "./xmlParser.js";
+import { TallyObjectType, TallyObjectMap } from "./schema/registry.js";
+import { FetchTallyTransport, TallyTransport } from "./transport.js";
+export { FetchTallyTransport as HttpTransport };
+import { Voucher } from "./schema/transactions/types.js";
+import { Company, Ledger, StockItem } from "./schema/masters/types.js";
+
+export interface LicenseInfo {
+  serialNumber: string;
+  remoteSerialNumber: string;
+  accountId: string;
+  adminMailId: string;
+  isAdmin: boolean;
+  isEducationalMode: boolean;
+  isSilver: boolean;
+  isGold: boolean;
+  planName: string;
+  isIndian: boolean;
+  isRemoteAccessMode: boolean;
+  isLicClientMode: boolean;
+  applicationPath: string;
+  dataPath: string;
+  userLevel: string;
+  userName: string;
+  tallyVersion: string;
+  tallyShortVersion: string;
+  isTallyPrime: boolean;
+  isTallyPrimeEditLog: boolean;
+  isTallyPrimeServer: boolean;
+}
+
+export interface LastAlterIds {
+  mastersLastId: number;
+  vouchersLastId: number;
+}
+
+export interface PaginatedResponse<T> {
+  totalCount: number;
+  pageNum: number;
+  recordsPerPage: number;
+  totalPages: number;
+  objects: T[];
+}
+
+export interface TallyClientOptions {
+  url?: string;
+  timeout?: number;
+  company?: string;
+  transport?: TallyTransport;
+}
 
 export class TallyClient {
   private transport: TallyTransport;
+  private defaultCompany?: string;
 
-  constructor(
-    baseURLOrOptions: string | { baseURL?: string; host?: string; port?: number; timeoutMinutes?: number } = "http://localhost",
-    port = 9000,
-    timeoutMinutes = 3,
-    transport?: TallyTransport
-  ) {
-    if (typeof baseURLOrOptions === "object" && baseURLOrOptions !== null) {
-      const opts = baseURLOrOptions;
-      const url = opts.baseURL || (opts.host ? (opts.host.startsWith("http") ? opts.host : `http://${opts.host}`) : "http://localhost");
-      const p = opts.port || 9000;
-      const t = opts.timeoutMinutes || 3;
-      this.transport = transport || new FetchTallyTransport({ baseURL: url, port: p, timeoutMinutes: t });
-    } else {
-      this.transport = transport || new FetchTallyTransport({ baseURL: baseURLOrOptions, port, timeoutMinutes });
-    }
+  constructor(options: TallyClientOptions = {}) {
+    this.transport = options.transport || new FetchTallyTransport({ baseURL: options.url || "http://localhost", port: 9000, timeoutMinutes: (options.timeout || 30000) / 60000 });
+    this.defaultCompany = options.company;
   }
 
-  public setupTallyService(url: string, port: number): void {
-    if (this.transport instanceof FetchTallyTransport) {
-      this.transport.setup(url, port);
-      return;
-    }
-    this.transport = new FetchTallyTransport({ baseURL: url, port });
+  private async sendRequest(xml: string, requestName: string): Promise<string> {
+    return this.transport.send(xml);
   }
 
-  public async sendRequest(xml: string, requestType = "Generic Request"): Promise<string> {
-    return this.transport.send(xml, requestType);
-  }
-
-  public async check(): Promise<boolean> {
-    try {
-      const xml = buildActiveCompanyRequestXml();
-      const resp = await this.sendRequest(xml, "Check Connection");
-      const parsed = parseRawXml(resp);
-      return checkTallyError(parsed) === null;
-    } catch {
-      return false;
-    }
-  }
-
-  public async getActiveCompany(): Promise<string> {
-    const xml = buildActiveCompanyRequestXml();
-    const resp = await this.sendRequest(xml, "Get Active Company");
-    return parseActiveCompany(resp);
-  }
-
-  public async getLicenseInfo(): Promise<LicenseInfo> {
-    const xml = buildLicenseInfoRequestXml();
-    const resp = await this.sendRequest(xml, "Get License Info");
-    return parseLicenseInfo(resp);
-  }
-
-  public async getLastAlterIds(options: RequestOptions = {}): Promise<LastAlterIds> {
-    const xml = buildLastAlterIdsRequestXml(options);
-    const resp = await this.sendRequest(xml, "Get Last Alter IDs");
-    return parseLastAlterIds(resp);
-  }
-
-  public async getLedgers(options: PaginatedRequestOptions = {}): Promise<Ledger[]> {
-    const xml = buildExportCollectionXml("Ledger", options);
-    const resp = await this.sendRequest(xml, "Get Ledgers");
-    return parseExportCollection<Ledger>(resp, "Ledger");
-  }
-
-  public async getGroups(options: PaginatedRequestOptions = {}): Promise<Group[]> {
-    const xml = buildExportCollectionXml("Group", options);
-    const resp = await this.sendRequest(xml, "Get Groups");
-    return parseExportCollection<Group>(resp, "Group");
-  }
-
-  public async getCompanies(options: PaginatedRequestOptions = {}): Promise<Company[]> {
-    const xml = buildExportCollectionXml("Company", options);
-    const resp = await this.sendRequest(xml, "Get Companies");
-    return parseExportCollection<Company>(resp, "Company");
-  }
-
-  public async getVouchers(options: PaginatedRequestOptions = {}): Promise<Voucher[]> {
-    const xml = buildExportCollectionXml("Voucher", options);
-    const resp = await this.sendRequest(xml, "Get Vouchers");
-    return parseExportCollection<Voucher>(resp, "Voucher");
-  }
-
-  public async getCostCentres(options: PaginatedRequestOptions = {}): Promise<CostCentre[]> {
-    const xml = buildExportCollectionXml("CostCentre", options);
-    const resp = await this.sendRequest(xml, "Get Cost Centres");
-    return parseExportCollection<CostCentre>(resp, "CostCentre");
-  }
-
-  public async getCostCategories(options: PaginatedRequestOptions = {}): Promise<CostCategory[]> {
-    const xml = buildExportCollectionXml("CostCategory", options);
-    const resp = await this.sendRequest(xml, "Get Cost Categories");
-    return parseExportCollection<CostCategory>(resp, "CostCategory");
-  }
-
-  public async getVoucherTypes(options: PaginatedRequestOptions = {}): Promise<VoucherType[]> {
-    const xml = buildExportCollectionXml("VoucherType", options);
-    const resp = await this.sendRequest(xml, "Get Voucher Types");
-    return parseExportCollection<VoucherType>(resp, "VoucherType");
-  }
-
-  public async postLedgers(ledgers: Ledger[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Ledger", ledgers, options);
-    const resp = await this.sendRequest(xml, "Post Ledgers");
-    return parsePostResponse(resp);
-  }
-
-  public async postGroups(groups: Group[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Group", groups, options);
-    const resp = await this.sendRequest(xml, "Post Groups");
-    return parsePostResponse(resp);
-  }
-
-  public async postVouchers(vouchers: Voucher[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Voucher", vouchers, options);
-    const resp = await this.sendRequest(xml, "Post Vouchers");
-    return parsePostResponse(resp);
-  }
-
-  public async postCostCentres(costCentres: CostCentre[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("CostCentre", costCentres, options);
-    const resp = await this.sendRequest(xml, "Post Cost Centres");
-    return parsePostResponse(resp);
-  }
-
-  public async postCostCategories(costCategories: CostCategory[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("CostCategory", costCategories, options);
-    const resp = await this.sendRequest(xml, "Post Cost Categories");
-    return parsePostResponse(resp);
-  }
-
-  public async postVoucherTypes(voucherTypes: VoucherType[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("VoucherType", voucherTypes, options);
-    const resp = await this.sendRequest(xml, "Post Voucher Types");
-    return parsePostResponse(resp);
-  }
-
-  public async getCurrencies(options: PaginatedRequestOptions = {}): Promise<Currency[]> {
-    const xml = buildExportCollectionXml("Currency", options);
-    const resp = await this.sendRequest(xml, "Get Currencies");
-    return parseExportCollection<Currency>(resp, "Currency");
-  }
-
-  public async getGSTRegistrations(options: PaginatedRequestOptions = {}): Promise<GSTRegistration[]> {
-    const filters = [...(options.filters || [])];
-    if (!filters.some(f => f.name === "TaxUnitForGST")) {
-      filters.push({ name: "TaxUnitForGST" });
-    }
-    const xml = buildExportCollectionXml("GSTRegistration", {
+  public async getObjects<T extends TallyObjectType>(
+    type: T,
+    options: PaginatedRequestOptions = {}
+  ): Promise<TallyObjectMap[T][]> {
+    const opts: PaginatedRequestOptions = {
+      company: this.defaultCompany,
       ...options,
-      collectionType: "TAXUNIT",
-      filters,
+    };
+    const reqXml = buildExportCollectionXml(type, opts);
+    const respXml = await this.sendRequest(reqXml, `Get ${type}`);
+    const error = checkTallyError(respXml);
+    if (error) {
+      throw new Error(`Tally error fetching ${type}: ${error}`);
+    }
+    return parseExportCollection(respXml, type);
+  }
+
+  public async getPaginatedObjects<T extends TallyObjectType>(
+    type: T,
+    options: PaginatedRequestOptions = {}
+  ): Promise<PaginatedResponse<TallyObjectMap[T]>> {
+    const opts: PaginatedRequestOptions = {
+      company: this.defaultCompany,
+      ...options,
+    };
+    const pageNum = opts.pageNum || 1;
+    const recordsPerPage = opts.recordsPerPage || 100;
+
+    let totalCount = 0;
+    if (!opts.disableCountTag) {
+      totalCount = await this.getCount(type, opts);
+    }
+
+    const objects = await this.getObjects(type, {
+      ...opts,
+      pageNum,
+      recordsPerPage,
     });
-    const resp = await this.sendRequest(xml, "Get GST Registrations");
-    return parseExportCollection<GSTRegistration>(resp, "GSTRegistration");
-  }
 
-  public async postCurrencies(currencies: Currency[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Currency", currencies, options);
-    const resp = await this.sendRequest(xml, "Post Currencies");
-    return parsePostResponse(resp);
-  }
+    if (opts.disableCountTag) {
+      totalCount = objects.length;
+    }
 
-  public async postGSTRegistrations(registrations: GSTRegistration[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("GSTRegistration", registrations, options);
-    const resp = await this.sendRequest(xml, "Post GST Registrations");
-    return parsePostResponse(resp);
-  }
-
-  public async getUnits(options: PaginatedRequestOptions = {}): Promise<Unit[]> {
-    const xml = buildExportCollectionXml("Unit", options);
-    const resp = await this.sendRequest(xml, "Get Units");
-    return parseExportCollection<Unit>(resp, "Unit");
-  }
-
-  public async getStockGroups(options: PaginatedRequestOptions = {}): Promise<StockGroup[]> {
-    const xml = buildExportCollectionXml("StockGroup", options);
-    const resp = await this.sendRequest(xml, "Get Stock Groups");
-    return parseExportCollection<StockGroup>(resp, "StockGroup");
-  }
-
-  public async getStockCategories(options: PaginatedRequestOptions = {}): Promise<StockCategory[]> {
-    const xml = buildExportCollectionXml("StockCategory", options);
-    const resp = await this.sendRequest(xml, "Get Stock Categories");
-    return parseExportCollection<StockCategory>(resp, "StockCategory");
-  }
-
-  public async getGodowns(options: PaginatedRequestOptions = {}): Promise<Godown[]> {
-    const xml = buildExportCollectionXml("Godown", options);
-    const resp = await this.sendRequest(xml, "Get Godowns");
-    return parseExportCollection<Godown>(resp, "Godown");
-  }
-
-  public async getStockItems(options: PaginatedRequestOptions = {}): Promise<StockItem[]> {
-    const xml = buildExportCollectionXml("StockItem", options);
-    const resp = await this.sendRequest(xml, "Get Stock Items");
-    return parseExportCollection<StockItem>(resp, "StockItem");
-  }
-
-  public async getEmployees(options: PaginatedRequestOptions = {}): Promise<Employee[]> {
-    const filters = [...(options.filters || [])];
-    filters.push({ name: "TC_IsEmployee", formula: "$ISEMPLOYEE = Yes" });
-    filters.push({ name: "TC_IsNotEmployeeGroup", formula: "$ISEMPLOYEEGROUP = No" });
-    const xml = buildExportCollectionXml("Employee", { ...options, filters });
-    const resp = await this.sendRequest(xml, "Get Employees");
-    return parseExportCollection<Employee>(resp, "Employee");
-  }
-
-  public async getEmployeeGroups(options: PaginatedRequestOptions = {}): Promise<EmployeeGroup[]> {
-    const filters = [...(options.filters || [])];
-    filters.push({ name: "TC_IsEmployee", formula: "$ISEMPLOYEE = Yes" });
-    filters.push({ name: "TC_IsEmployeeGroup", formula: "$ISEMPLOYEEGROUP = Yes" });
-    const xml = buildExportCollectionXml("EmployeeGroup", { ...options, filters });
-    const resp = await this.sendRequest(xml, "Get Employee Groups");
-    return parseExportCollection<EmployeeGroup>(resp, "EmployeeGroup");
-  }
-
-  public async postCompanies(companies: Company[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Company", companies, options);
-    const resp = await this.sendRequest(xml, "Post Companies");
-    return parsePostResponse(resp);
-  }
-
-  public async postUnits(units: Unit[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Unit", units, options);
-    const resp = await this.sendRequest(xml, "Post Units");
-    return parsePostResponse(resp);
-  }
-
-  public async postStockGroups(stockGroups: StockGroup[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("StockGroup", stockGroups, options);
-    const resp = await this.sendRequest(xml, "Post Stock Groups");
-    return parsePostResponse(resp);
-  }
-
-  public async postStockCategories(stockCategories: StockCategory[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("StockCategory", stockCategories, options);
-    const resp = await this.sendRequest(xml, "Post Stock Categories");
-    return parsePostResponse(resp);
-  }
-
-  public async postGodowns(godowns: Godown[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Godown", godowns, options);
-    const resp = await this.sendRequest(xml, "Post Godowns");
-    return parsePostResponse(resp);
-  }
-
-  public async postStockItems(stockItems: StockItem[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("StockItem", stockItems, options);
-    const resp = await this.sendRequest(xml, "Post Stock Items");
-    return parsePostResponse(resp);
-  }
-
-  public async postEmployees(employees: Employee[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("Employee", employees, options);
-    const resp = await this.sendRequest(xml, "Post Employees");
-    return parsePostResponse(resp);
-  }
-
-  public async postEmployeeGroups(employeeGroups: EmployeeGroup[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    const xml = buildPostXml("EmployeeGroup", employeeGroups, options);
-    const resp = await this.sendRequest(xml, "Post Employee Groups");
-    return parsePostResponse(resp);
-  }
-
-  public async getMasterStatistics(options: RequestOptions = {}): Promise<MasterStatistics[]> {
-    const xml = buildMasterStatisticsXml(options);
-    const resp = await this.sendRequest(xml, "Get Master Statistics");
-    return parseMasterStatistics(resp);
-  }
-
-  public async getVoucherStatistics(options: RequestOptions = {}): Promise<VoucherStatistics[]> {
-    const xml = buildVoucherStatisticsXml(options);
-    const resp = await this.sendRequest(xml, "Get Voucher Statistics");
-    return parseVoucherStatistics(resp);
-  }
-
-  public async getObjectsCount(collectionType: string, options: RequestOptions = {}): Promise<number> {
-    const xml = buildCountRequestXml(collectionType, options);
-    const resp = await this.sendRequest(xml, "Get Objects Count");
-    return parseCountResponse(resp);
-  }
-
-  public async getObjects<TType extends TallyObjectType>(
-    collectionType: TType,
-    options: PaginatedRequestOptions = {}
-  ): Promise<TallyObjectMap[TType][]> {
-    const xml = buildExportCollectionXml(collectionType, options);
-    const resp = await this.sendRequest(xml, `Get ${collectionType}`);
-    return parseExportCollection<TallyObjectMap[TType]>(resp, collectionType);
-  }
-
-  public async postObjects<TType extends TallyObjectType>(
-    collectionType: TType,
-    objects: TallyObjectMap[TType][],
-    options: PostRequestOptions = {}
-  ): Promise<PostResponse[]> {
-    const xml = buildPostXml(collectionType, objects, options);
-    const resp = await this.sendRequest(xml, `Post ${collectionType}`);
-    return parsePostResponse(resp);
-  }
-
-  public async getPaginatedObjects<T>(
-    collectionType: Parameters<typeof parseExportCollection>[1],
-    options: PaginatedRequestOptions = {}
-  ): Promise<PaginatedResponse<T>> {
-    const pageNum = options.pageNum || 1;
-    const recordsPerPage = options.recordsPerPage || 1000;
-    const totalCount = options.disableCountTag ? 0 : await this.getObjectsCount(collectionType, options);
-    const xml = buildExportCollectionXml(collectionType, { ...options, pageNum, recordsPerPage, disableCountTag: true });
-    const resp = await this.sendRequest(xml, `Get Paginated ${collectionType}`);
-    const objects = parseExportCollection<T>(resp, collectionType);
+    const totalPages = recordsPerPage > 0 ? Math.ceil(totalCount / recordsPerPage) : 1;
 
     return {
       totalCount,
       pageNum,
       recordsPerPage,
-      totalPages: totalCount > 0 ? Math.ceil(totalCount / recordsPerPage) : 0,
+      totalPages,
       objects,
     };
   }
 
-  public async getPeriodicVoucherStatistics(
-    periodicity: Periodicity,
-    options: PeriodicVoucherStatisticsOptions = {}
-  ): Promise<AutoColVoucherTypeStat[]> {
-    const xml = buildPeriodicVoucherStatisticsXml(periodicity, options);
-    const resp = await this.sendRequest(xml, "Get Periodic Voucher Statistics");
-    return parsePeriodicVoucherStatistics(resp);
+  public async getRawObjects<T extends TallyObjectType>(
+    type: T,
+    options: PaginatedRequestOptions = {}
+  ): Promise<Record<string, unknown>[]> {
+    const opts = { company: this.defaultCompany, ...options };
+    const reqXml = buildExportCollectionXml(type, opts);
+    const respXml = await this.sendRequest(reqXml, `Get Raw ${type}`);
+    const parsed = parseRawXml(respXml) as any;
+    const col = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION;
+    if (!col) return [];
+    const codec = parseExportCollection(respXml, type);
+    return codec.map(c => (c as any)._raw || c);
   }
 
-  public async getAttendanceTypes(options: PaginatedRequestOptions = {}): Promise<AttendanceType[]> {
-    return this.getObjects("AttendanceType", options);
+  public async postObjects<T extends TallyObjectType>(
+    type: T,
+    objects: readonly TallyObjectMap[T][],
+    options: PostRequestOptions = {}
+  ): Promise<PostResponse[]> {
+    const opts = { company: this.defaultCompany, ...options };
+    const reqXml = buildPostXml(type, objects, opts);
+    const respXml = await this.sendRequest(reqXml, `Post ${type}`);
+    return parsePostResponse(respXml);
   }
 
-  public async postAttendanceTypes(attendanceTypes: AttendanceType[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    return this.postObjects("AttendanceType", attendanceTypes, options);
+  public async getCount(type: string, options: RequestOptions = {}): Promise<number> {
+    const opts = { company: this.defaultCompany, ...options };
+    const reqXml = buildCountRequestXml(type, opts);
+    const respXml = await this.sendRequest(reqXml, `Count ${type}`);
+    return parseCountResponse(respXml);
   }
 
-  public async getBudgets(options: PaginatedRequestOptions = {}): Promise<Budget[]> {
-    return this.getObjects("Budget", options);
+  // Master convenience shortcuts
+  public async getLedgers(options?: PaginatedRequestOptions): Promise<Ledger[]> {
+    return this.getObjects("Ledger", options);
   }
 
-  public async postBudgets(budgets: Budget[], options: PostRequestOptions = {}): Promise<PostResponse[]> {
-    return this.postObjects("Budget", budgets, options);
+  public async getStockItems(options?: PaginatedRequestOptions): Promise<StockItem[]> {
+    return this.getObjects("StockItem", options);
   }
 
-  public async getReport(reportId: string, options: RequestOptions = {}): Promise<any> {
-    const fromDate = formatDateForTally(options.fromDate);
-    const toDate = formatDateForTally(options.toDate);
+  public async getCompanies(options?: PaginatedRequestOptions): Promise<Company[]> {
+    return this.getObjects("Company", options);
+  }
 
-    const xml = `<?xml version="1.0" encoding="utf-8"?>
-<ENVELOPE>
+  public async getVouchers(options?: PaginatedRequestOptions): Promise<Voucher[]> {
+    return this.getObjects("Voucher", options);
+  }
+
+  public async getActiveCompany(): Promise<string> {
+    const xml = `<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
-    <TALLYREQUEST>EXPORT</TALLYREQUEST>
-    <TYPE>DATA</TYPE>
-    <ID>${escapeXml(reportId)}</ID>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>$$CurrentCompany</ID>
+  </HEADER>
+</ENVELOPE>`;
+    const resp = await this.sendRequest(xml, "Get Active Company");
+    const parsed = parseRawXml(resp);
+    const body = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+    return String(body || "").trim();
+  }
+
+  public async getLicenseInfo(): Promise<LicenseInfo> {
+    // Fixed: query IsSilver and IsGold instead of IsAdmin!
+    const xml = `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>LicenseInfoReport</ID>
   </HEADER>
   <BODY>
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        ${options.company ? `<SVCURRENTCOMPANY>${escapeXml(options.company)}</SVCURRENTCOMPANY>` : ""}
-        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
-        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
       </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="LicenseInfoReport">
+            <FORMS>LicenseInfoForm</FORMS>
+          </REPORT>
+          <FORM NAME="LicenseInfoForm">
+            <PARTS>LicenseInfoPart</PARTS>
+          </FORM>
+          <PART NAME="LicenseInfoPart">
+            <LINES>LicenseInfoLine</LINES>
+          </PART>
+          <LINE NAME="LicenseInfoLine">
+            <FIELDS>
+              F_SERIAL, F_REMOTE_SERIAL, F_ACCOUNT_ID, F_ADMIN_EMAIL,
+              F_IS_ADMIN, F_IS_EDU, F_IS_SILVER, F_IS_GOLD, F_PLAN_NAME,
+              F_IS_INDIAN, F_APP_PATH, F_DATA_PATH, F_USER_LEVEL,
+              F_USER_NAME, F_TALLY_VERSION
+            </FIELDS>
+          </LINE>
+          <FIELD NAME="F_SERIAL"><SET>$$LicenseInfo:SerialNumber</SET><XMLTAG>SERIALNUMBER</XMLTAG></FIELD>
+          <FIELD NAME="F_REMOTE_SERIAL"><SET>$$LicenseInfo:RemoteSerialNumber</SET><XMLTAG>REMOTESERIALNUMBER</XMLTAG></FIELD>
+          <FIELD NAME="F_ACCOUNT_ID"><SET>$$LicenseInfo:AccountId</SET><XMLTAG>ACCOUNTID</XMLTAG></FIELD>
+          <FIELD NAME="F_ADMIN_EMAIL"><SET>$$LicenseInfo:AdminMailId</SET><XMLTAG>ADMINMAILID</XMLTAG></FIELD>
+          <FIELD NAME="F_IS_ADMIN"><SET>$$TC_GetBooleanFromLogicField:$$LicenseInfo:IsAdmin</SET><XMLTAG>ISADMIN</XMLTAG></FIELD>
+          <FIELD NAME="F_IS_EDU"><SET>$$TC_GetBooleanFromLogicField:$$LicenseInfo:IsEducationalMode</SET><XMLTAG>ISEDUCATIONALMODE</XMLTAG></FIELD>
+          <FIELD NAME="F_IS_SILVER"><SET>$$TC_GetBooleanFromLogicField:$$LicenseInfo:IsSilver</SET><XMLTAG>ISSILVER</XMLTAG></FIELD>
+          <FIELD NAME="F_IS_GOLD"><SET>$$TC_GetBooleanFromLogicField:$$LicenseInfo:IsGold</SET><XMLTAG>ISGOLD</XMLTAG></FIELD>
+          <FIELD NAME="F_PLAN_NAME"><SET>$$LicenseInfo:PlanName</SET><XMLTAG>PLANNAME</XMLTAG></FIELD>
+          <FIELD NAME="F_IS_INDIAN"><SET>$$TC_GetBooleanFromLogicField:$$LicenseInfo:IsIndian</SET><XMLTAG>ISINDIAN</XMLTAG></FIELD>
+          <FIELD NAME="F_APP_PATH"><SET>$$SysInfo:ApplicationPath</SET><XMLTAG>APPLICATIONPATH</XMLTAG></FIELD>
+          <FIELD NAME="F_DATA_PATH"><SET>##SVCurrentPath</SET><XMLTAG>DATAPATH</XMLTAG></FIELD>
+          <FIELD NAME="F_USER_LEVEL"><SET>$$UserLevel</SET><XMLTAG>USERLEVEL</XMLTAG></FIELD>
+          <FIELD NAME="F_USER_NAME"><SET>$$UserName</SET><XMLTAG>USERNAME</XMLTAG></FIELD>
+          <FIELD NAME="F_TALLY_VERSION"><SET>$$SysInfo:TallyVersion</SET><XMLTAG>TALLYVERSION</XMLTAG></FIELD>
+        </TDLMESSAGE>
+      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>`;
+    const resp = await this.sendRequest(xml, "Get License Info");
+    const parsed = parseRawXml(resp);
+    const data = (parsed as any)?.ENVELOPE?.BODY?.DATA?.LicenseInfoReport?.LICENSEINFOREPORT?.LicenseInfoPart?.LICENSEINFOPART?.LicenseInfoLine || {};
+    const r = new (await import("./xml/reader.js")).TallyReader(data);
 
-    const resp = await this.sendRequest(xml, `Get Report ${reportId}`);
-    return parseRawXml(resp);
+    return {
+      serialNumber: r.text("SERIALNUMBER") ?? "",
+      remoteSerialNumber: r.text("REMOTESERIALNUMBER") ?? "",
+      accountId: r.text("ACCOUNTID") ?? "",
+      adminMailId: r.text("ADMINMAILID") ?? "",
+      isAdmin: r.boolean("ISADMIN") ?? false,
+      isEducationalMode: r.boolean("ISEDUCATIONALMODE") ?? false,
+      isSilver: r.boolean("ISSILVER") ?? false,
+      isGold: r.boolean("ISGOLD") ?? false,
+      planName: r.text("PLANNAME") ?? "",
+      isIndian: r.boolean("ISINDIAN") ?? true,
+      isRemoteAccessMode: false,
+      isLicClientMode: false,
+      applicationPath: r.text("APPLICATIONPATH") ?? "",
+      dataPath: r.text("DATAPATH") ?? "",
+      userLevel: r.text("USERLEVEL") ?? "",
+      userName: r.text("USERNAME") ?? "",
+      tallyVersion: r.text("TALLYVERSION") ?? "",
+      tallyShortVersion: r.text("TALLYVERSION")?.split(" ")[0] ?? "",
+      isTallyPrime: true,
+      isTallyPrimeEditLog: false,
+      isTallyPrimeServer: false,
+    };
   }
 
-  public async getGSTComputation(options: RequestOptions = {}): Promise<any> {
-    return this.getReport("GSTComputation", options);
+  public async getLastAlterIds(): Promise<LastAlterIds> {
+    const xml = `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>LastAlterIdsReport</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="LastAlterIdsReport">
+            <FORMS>LastAlterIdsForm</FORMS>
+          </REPORT>
+          <FORM NAME="LastAlterIdsForm">
+            <PARTS>LastAlterIdsPart</PARTS>
+          </FORM>
+          <PART NAME="LastAlterIdsPart">
+            <LINES>LastAlterIdsLine</LINES>
+          </PART>
+          <LINE NAME="LastAlterIdsLine">
+            <FIELDS>F_MASTERS_LAST_ID, F_VOUCHERS_LAST_ID</FIELDS>
+          </LINE>
+          <FIELD NAME="F_MASTERS_LAST_ID"><SET>$$SysInfo:MastersLastId</SET><XMLTAG>MASTERSLASTID</XMLTAG></FIELD>
+          <FIELD NAME="F_VOUCHERS_LAST_ID"><SET>$$SysInfo:VouchersLastId</SET><XMLTAG>VOUCHERSLASTID</XMLTAG></FIELD>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+    const resp = await this.sendRequest(xml, "Get Last Alter IDs");
+    const parsed = parseRawXml(resp);
+    const line = (parsed as any)?.ENVELOPE?.BODY?.DATA?.LastAlterIdsReport?.LASTALTERIDSREPORT?.LastAlterIdsPart?.LASTALTERIDSPART?.LastAlterIdsLine || {};
+    const r = new (await import("./xml/reader.js")).TallyReader(line);
+    return {
+      mastersLastId: r.number("MASTERSLASTID") ?? 0,
+      vouchersLastId: r.number("VOUCHERSLASTID") ?? 0,
+    };
+  }
+
+  public async getMasterStatistics(options: RequestOptions = {}): Promise<MasterStatistics[]> {
+    const reqXml = buildMasterStatisticsXml({ company: this.defaultCompany, ...options });
+    const respXml = await this.sendRequest(reqXml, "Get Master Statistics");
+    return parseMasterStatistics(respXml);
+  }
+
+  public async getVoucherStatistics(options: RequestOptions = {}): Promise<VoucherStatistics[]> {
+    const reqXml = buildVoucherStatisticsXml({ company: this.defaultCompany, ...options });
+    const respXml = await this.sendRequest(reqXml, "Get Voucher Statistics");
+    return parseVoucherStatistics(respXml);
+  }
+
+  public async getPeriodicVoucherStatistics(options: RequestOptions & { voucherType?: string } = {}): Promise<AutoColVoucherTypeStat[]> {
+    const reqXml = buildPeriodicVoucherStatisticsXml({ company: this.defaultCompany, ...options });
+    const respXml = await this.sendRequest(reqXml, "Get Periodic Voucher Statistics");
+    return parsePeriodicVoucherStatistics(respXml);
   }
 }
 
