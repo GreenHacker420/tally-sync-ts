@@ -1,4 +1,5 @@
-import { TallyReader } from "../../xml/reader.js";
+import { TallyReader, asArray } from "../../xml/reader.js";
+import { tallyText } from "../../xml/values.js";
 import { XmlElement } from "../../xml/types.js";
 import { el, boolElement, amountElement } from "../../xml/writer.js";
 import { TallyCodec } from "../registry.js";
@@ -22,14 +23,26 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       "CREDITLIMIT", "BILLCREDITPERIOD"
     ]);
 
-    const mailNode = r.list("LEDMAILINGDETAILS.LIST")[0];
-    const mailR = mailNode ? new TallyReader(mailNode) : undefined;
+    const mailingDetails = r.list("LEDMAILINGDETAILS.LIST").map(m => {
+      const mr = new TallyReader(m);
+      const addrList = asArray((m["ADDRESS.LIST"] as any)?.ADDRESS ?? m["ADDRESS"]).map(tallyText).filter((x): x is string => !!x);
+      return {
+        applicableFrom: mr.text("APPLICABLEFROM"),
+        mailingName: mr.text("MAILINGNAME"),
+        address: addrList.length ? addrList : undefined,
+        state: mr.text("STATE"),
+        country: mr.text("COUNTRY"),
+        pinCode: mr.text("PINCODE"),
+      };
+    });
+
+    const mailNode = mailingDetails[0];
     const gstRegNode = r.list("LEDGSTREGDETAILS.LIST")[0];
     const gstRegR = gstRegNode ? new TallyReader(gstRegNode) : undefined;
 
     let gstin = r.text("PARTYGSTIN") ?? gstRegR?.text("GSTIN");
-    let stateName = r.text("STATENAME") ?? mailR?.text("STATE");
-    let country = r.text("COUNTRYNAME") ?? mailR?.text("COUNTRY");
+    let stateName = r.text("STATENAME") ?? mailNode?.state;
+    let country = r.text("COUNTRYNAME") ?? mailNode?.country;
     let regType = r.text("GSTREGISTRATIONTYPE") ?? gstRegR?.text("GSTREGISTRATIONTYPE");
     let placeOfSupply = r.text("PLACEOFSUPPLY") ?? gstRegR?.text("PLACEOFSUPPLY");
 
@@ -37,8 +50,10 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       name: r.attr("NAME") ?? r.text("NAME") ?? "",
       group: r.text("PARENT") ?? "",
       parent: r.text("PARENT"),
-      openingBalance: r.amount("OPENINGBALANCE"),
-      closingBalance: r.amount("CLOSINGBALANCE"),
+      masterId: r.number("MASTERID"),
+      alterId: r.number("ALTERID"),
+      openingBalance: r.number("OPENINGBALANCE") ?? r.amount("OPENINGBALANCE")?.value,
+      closingBalance: r.number("CLOSINGBALANCE") ?? r.amount("CLOSINGBALANCE")?.value,
       currency: r.text("CURRENCYNAME"),
       currencyName: r.text("CURRENCYNAME"),
       taxType: r.text("TAXTYPE"),
@@ -56,6 +71,7 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       email: r.text("EMAIL"),
       emailCc: r.text("EMAILCC"),
       website: r.text("WEBSITE"),
+      mailingDetails: mailingDetails.length ? mailingDetails : undefined,
       isBillWise: r.boolean("ISBILLWISEON"),
       isBillWiseOn: r.boolean("ISBILLWISEON"),
       isCostCentresOn: r.boolean("ISCOSTCENTRESON"),

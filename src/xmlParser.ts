@@ -1,6 +1,6 @@
 import { parseRawXml, cleanResponseXml } from "./xml/parser.js";
 import { asArray, TallyReader } from "./xml/reader.js";
-import { tallyText, tallyNumber } from "./xml/values.js";
+import { tallyText, tallyNumber, tallyBoolean } from "./xml/values.js";
 import { TallyObjectType, TallyObjectMap, TALLY_OBJECTS } from "./schema/registry.js";
 import { tallyCodecs } from "./schema/codecs.js";
 
@@ -15,7 +15,7 @@ export {
   parseRate,
   parseAmount,
   getSingleValue,
-  formatDateForTally
+  formatDateForTally,
 } from "./xml/values.js";
 
 export interface MasterStatistics {
@@ -48,6 +48,10 @@ export interface AutoColVoucherTypeStat {
 export interface PostResponse {
   status: "success" | "failure";
   message: string;
+  objectType?: string;
+  name?: string;
+  guid?: string;
+  remoteId?: string;
   masterId?: number;
   lastMasterId?: number;
   lastVchId?: number;
@@ -58,143 +62,190 @@ export interface PostResponse {
   ignored?: number;
   cancelled?: number;
   errors?: number;
-  alteredId?: number;
-  objectType?: string;
-  name?: string;
-  guid?: string;
-  remoteId?: string;
-  error?: string;
   lineErrors?: string[];
+  error?: string;
 }
 
-export function checkTallyError(parsedObj: any): { message: string; lineErrors: string[] } | null {
-  const envelope = parsedObj?.ENVELOPE;
-  if (!envelope) {
-    return { message: "Invalid XML response: missing ENVELOPE", lineErrors: [] };
+export function parseTallyNumeric(val: any): number {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === "number") return val;
+  const str = String(val).trim();
+  const isCr = /Cr$/i.test(str);
+  const cleanStr = str.replace(/[^0-9.-]/g, "");
+  const num = parseFloat(cleanStr) || 0;
+  return isCr ? -num : num;
+}
+
+export const parseTallyBoolean = tallyBoolean;
+
+export function checkTallyError(xml: string): string | null {
+  const parsed = parseRawXml(xml);
+  const envelope = parsed?.ENVELOPE as any;
+  if (!envelope) return null;
+
+  const data = envelope?.BODY?.DATA ?? envelope?.DATA;
+  const lineErrors = asArray(data?.LINEERROR).map(tallyText).filter((x): x is string => !!x);
+  if (lineErrors.length > 0) {
+    return lineErrors.join("; ");
   }
 
   const rawStatus = tallyText(envelope?.HEADER?.STATUS);
-  const rawLineError = envelope?.BODY?.DATA?.LINEERROR;
-  const lineErrors: string[] = [];
-
-  if (rawLineError) {
-    const list = asArray(rawLineError);
-    for (const le of list) {
-      const txt = tallyText(le);
-      if (txt) lineErrors.push(txt);
-    }
-  }
-
-  const isStatusZero = rawStatus === "0";
-  const isStatusFailure = rawStatus?.toLowerCase() === "failure";
-
-  if (isStatusZero || isStatusFailure || lineErrors.length > 0) {
-    return {
-      message: lineErrors.join("; ") || "Tally request failed",
-      lineErrors,
-    };
+  if (rawStatus === "0" || rawStatus?.toLowerCase() === "failure") {
+    return "Tally returned failure status";
   }
 
   return null;
 }
 
-export function parseExportCollection<T extends TallyObjectType>(
-  xml: string,
-  type: T
-): TallyObjectMap[T][] {
+export function parseExportCollection<T = any>(xml: string, objectType: TallyObjectType | string): T[] {
   const parsed = parseRawXml(xml);
   const envelope = parsed?.ENVELOPE as any;
-  if (!envelope) return [];
+  const data = envelope?.BODY?.DATA ?? envelope?.DATA ?? parsed;
 
-  const collection = envelope?.BODY?.DATA?.COLLECTION;
+  const collection = data?.COLLECTION ?? data;
   if (!collection) return [];
 
-  const codec = tallyCodecs[type];
-  const targetTag = codec.xmlTag;
+  const codec = tallyCodecs[objectType as TallyObjectType];
 
-  // Find target nodes matching codec's XML tag
-  let rawItems = collection[targetTag];
-  if (!rawItems) {
-    // Fallback: look for TALLYMESSAGE
-    const messages = collection.TALLYMESSAGE;
-    if (messages) {
-      const msgList = asArray(messages);
-      rawItems = msgList.map(m => m[targetTag]).filter(Boolean);
+  // Look for target key(s)
+  const tagCandidates = [
+    objectType.toUpperCase(),
+    objectType,
+    objectType === "Voucher" ? "VOUCHER" : undefined,
+    objectType === "StockItem" ? "STOCKITEM" : undefined,
+    objectType === "StockGroup" ? "STOCKGROUP" : undefined,
+    objectType === "StockCategory" ? "STOCKCATEGORY" : undefined,
+    objectType === "CostCentre" ? "COSTCENTRE" : undefined,
+    objectType === "Employee" ? "COSTCENTRE" : undefined,
+    objectType === "EmployeeGroup" ? "COSTCENTRE" : undefined,
+    objectType === "CostCategory" ? "COSTCATEGORY" : undefined,
+    objectType === "AttendanceType" ? "ATTENDANCE" : undefined,
+    objectType === "GSTRegistration" ? "TAXUNIT" : undefined,
+    objectType === "GSTRegistration" ? "GSTREGISTRATION" : undefined,
+    "OBJECT",
+  ].filter((x): x is string => !!x);
+
+  for (const tag of tagCandidates) {
+    if (collection[tag] !== undefined) {
+      const rawItems = asArray(collection[tag]);
+      return rawItems.map(item => {
+        if (codec) {
+          return codec.parse(item as Record<string, unknown>) as unknown as T;
+        }
+        return item as T;
+      });
     }
   }
 
-  if (!rawItems) return [];
-  const itemsList = asArray(rawItems);
-  return itemsList.map(item => codec.parse(item)) as TallyObjectMap[T][];
+  // Fallback: check all keys in collection
+  for (const [key, value] of Object.entries(collection)) {
+    if (key.startsWith("?") || key.startsWith("@_")) continue;
+    const upper = key.toUpperCase();
+    if (tagCandidates.includes(upper) || upper.includes(objectType.toUpperCase())) {
+      const rawItems = asArray(value);
+      return rawItems.map(item => {
+        if (codec) {
+          return codec.parse(item as Record<string, unknown>) as unknown as T;
+        }
+        return item as T;
+      });
+    }
+  }
+
+  return [];
 }
 
 export function parseCountResponse(xml: string): number {
   const parsed = parseRawXml(xml);
-  const r = new TallyReader((parsed as any)?.ENVELOPE?.BODY?.DATA?.COLLECTION || {});
-  return r.number("TOTALCOUNT") ?? 0;
+  const envelope = parsed?.ENVELOPE as any;
+  const data = envelope?.BODY?.DATA ?? envelope;
+
+  const r = new TallyReader(data);
+  return r.number("TC_TOTALCOUNT") ?? r.number("TOTALCOUNT") ?? 0;
 }
 
 export function parseMasterStatistics(xml: string): MasterStatistics[] {
   const parsed = parseRawXml(xml);
-  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
-  if (!data) return [];
+  const envelope = parsed?.ENVELOPE as any;
+  const data = envelope?.BODY?.DATA ?? envelope;
 
-  const list = asArray(
-    data?.TC_MasterStatisticsReport?.TC_MASTERSTATISTICSREPORT?.TC_MasterStatisticsPart?.TC_MASTERSTATISTICSPART?.TC_MasterStatisticsLine ||
-    data?.COLLECTION?.OBJECT
-  );
-
+  const list = asArray(data?.TC_MASTERSTATISTICSREPORT ?? data?.TC_MasterStatisticsReport ?? data?.MasterStatistics);
   return list.map(item => {
     const r = new TallyReader(item);
     return {
-      name: r.text("STATNAME") ?? r.text("NAME") ?? "",
-      count: r.number("STATCOUNT") ?? r.number("TOTALCOUNT") ?? 0,
+      name: r.text("NAME") ?? "",
+      count: r.number("COUNT") ?? 0,
     };
   });
 }
 
 export function parseVoucherStatistics(xml: string): VoucherStatistics[] {
   const parsed = parseRawXml(xml);
-  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
-  if (!data) return [];
+  const envelope = parsed?.ENVELOPE as any;
+  const data = envelope?.BODY?.DATA ?? envelope;
 
-  const list = asArray(
-    data?.TC_VoucherStatisticsReport?.TC_VOUCHERSTATISTICSREPORT?.TC_VoucherStatisticsPart?.TC_VOUCHERSTATISTICSPART?.TC_VoucherStatisticsLine ||
-    data?.COLLECTION?.OBJECT
-  );
-
+  const list = asArray(data?.TC_VOUCHERSTATISTICSREPORT ?? data?.TC_VoucherStatisticsReport ?? data?.VoucherStatistics);
   return list.map(item => {
     const r = new TallyReader(item);
     return {
-      name: r.text("VCHTYPENAME") ?? r.text("NAME") ?? "",
+      name: r.text("NAME") ?? "",
       totalCount: r.number("TOTALCOUNT") ?? 0,
       cancelledCount: r.number("CANCELLEDCOUNT") ?? 0,
       optionalCount: r.number("OPTIONALCOUNT") ?? 0,
-      count: r.number("TOTALCOUNT") ?? 0,
+      count: r.number("COUNT") ?? r.number("TOTALCOUNT") ?? 0,
     };
   });
 }
 
-export function parsePeriodicVoucherStatistics(xml: string): PeriodicVoucherStat[] {
+export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeStat[] {
   const parsed = parseRawXml(xml);
   const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
   if (!data) return [];
 
+  const vchTypes = asArray(data?.VCHTYPESTAT ?? data?.VchTypeStat);
+  if (vchTypes.length > 0) {
+    return vchTypes.map(vt => {
+      const r = new TallyReader(vt);
+      const name = r.text("NAME") ?? "";
+      const totalCount = r.number("TOTALCOUNT") ?? 0;
+      const periods = asArray(vt?.PERIODSTAT ?? vt?.PeriodStat).map(ps => {
+        const pr = new TallyReader(ps);
+        return {
+          fromDate: pr.text("FROMDATE") ?? "",
+          toDate: pr.text("TODATE") ?? "",
+          cancelledCount: pr.number("CANCELLEDCOUNT") ?? 0,
+          optionalCount: pr.number("OPTIONALCOUNT") ?? pr.number("OTIONALCOUNT") ?? 0,
+          totalCount: pr.number("TOTALCOUNT") ?? 0,
+        };
+      });
+      return {
+        name,
+        totalCount,
+        periodStats: periods,
+      };
+    });
+  }
+
+  // Fallback for custom report
   const list = asArray(
     data?.PeriodicVoucherStatReport?.PERIODICVOUCHERSTATREPORT?.PeriodicVoucherStatPart?.PERIODICVOUCHERSTATPART?.PeriodicVoucherStatLine ||
     data?.COLLECTION?.OBJECT
   );
 
-  return list.map(item => {
-    const r = new TallyReader(item);
-    return {
-      fromDate: r.text("FROMDATE") ?? "",
-      toDate: r.text("TODATE") ?? "",
-      cancelledCount: r.number("CANCELLEDCOUNT") ?? 0,
-      optionalCount: r.number("OPTIONALCOUNT") ?? 0,
-      totalCount: r.number("TOTALCOUNT") ?? 0,
-    };
-  });
+  return [{
+    name: "All",
+    totalCount: list.length,
+    periodStats: list.map(item => {
+      const r = new TallyReader(item);
+      return {
+        fromDate: r.text("FROMDATE") ?? "",
+        toDate: r.text("TODATE") ?? "",
+        cancelledCount: r.number("CANCELLEDCOUNT") ?? 0,
+        optionalCount: r.number("OPTIONALCOUNT") ?? r.number("OTIONALCOUNT") ?? 0,
+        totalCount: r.number("TOTALCOUNT") ?? 0,
+      };
+    }),
+  }];
 }
 
 export function parsePostResponse(xml: string): PostResponse[] {
@@ -204,7 +255,28 @@ export function parsePostResponse(xml: string): PostResponse[] {
     return [{ status: "failure", message: "Invalid XML response: missing ENVELOPE" }];
   }
 
-  const data = envelope?.BODY?.DATA;
+  const data = envelope?.BODY?.DATA ?? envelope?.DATA;
+
+  // Check custom report results: <RESULTS><RESULT>...
+  const results = data?.RESULTS?.RESULT ?? envelope?.RESULTS?.RESULT;
+  if (results) {
+    return asArray(results).map((item: any) => {
+      const r = new TallyReader(item);
+      const err = r.text("ERROR");
+      const isFailure = !!err;
+      return {
+        status: isFailure ? "failure" : "success",
+        message: err ?? "Success",
+        objectType: r.text("OBJECTTYPE"),
+        name: r.text("NAME"),
+        masterId: r.number("MASTERID"),
+        guid: r.text("GUID"),
+        remoteId: r.text("REMOTEID"),
+        error: err,
+      };
+    });
+  }
+
   const lineErrors = asArray(data?.LINEERROR).map(tallyText).filter((x): x is string => !!x);
 
   const rawStatus = tallyText(envelope?.HEADER?.STATUS);
@@ -224,7 +296,9 @@ export function parsePostResponse(xml: string): PostResponse[] {
 
   const message = isFailure
     ? (lineErrors.join("; ") || "Import failed")
-    : `Successfully processed: ${created} created, ${altered} altered, ${deleted} deleted`;
+    : (created > 0 && altered === 0 && deleted === 0)
+      ? "Created successfully"
+      : `Successfully processed: ${created} created, ${altered} altered, ${deleted} deleted`;
 
   return [{
     status: isFailure ? "failure" : "success",
@@ -236,10 +310,60 @@ export function parsePostResponse(xml: string): PostResponse[] {
     cancelled,
     errors,
     lastMasterId: lastMid,
-    masterId: lastMid,
+    masterId: lastMid ?? lastVchId,
     lastVoucherId: lastVchId,
     lastVchId: lastVchId,
     lineErrors: lineErrors.length ? lineErrors : undefined,
     error: isFailure ? message : undefined,
   }];
+}
+
+export function parseActiveCompany(xml: string): string {
+  const parsed = parseRawXml(xml);
+  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+  const val = data?.RESULT ?? data?.STATICVARIABLES?.SVCURRENTCOMPANY ?? data;
+  return typeof val === "string" ? val.trim() : (tallyText(val) ?? "").trim();
+}
+
+export function parseLicenseInfo(xml: string): any {
+  const parsed = parseRawXml(xml);
+  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+  const collection = data?.COLLECTION;
+  const rawObj = collection?.OBJECT ?? collection?.TC_LICENSEINFOOBJECT ?? collection;
+  const obj = Array.isArray(rawObj) ? rawObj[0] : rawObj;
+  const r = new TallyReader(obj);
+  return {
+    serialNumber: r.text("SERIALNUMBER") ?? "",
+    remoteSerialNumber: r.text("REMOTESERIALNUMBER") ?? "",
+    accountId: r.text("ACCOUNTID") ?? "",
+    adminMailId: r.text("ADMINMAILID") ?? "",
+    isAdmin: r.boolean("ISADMIN") ?? false,
+    isEducationalMode: r.boolean("ISEDUCATIONALMODE") ?? false,
+    isSilver: r.boolean("ISSILVER") ?? false,
+    isGold: r.boolean("ISGOLD") ?? false,
+    planName: r.text("PLANNAME") ?? "",
+    isIndian: r.boolean("ISINDIAN") ?? true,
+    isRemoteAccessMode: false,
+    isLicClientMode: false,
+    applicationPath: r.text("APPLICATIONPATH") ?? "",
+    dataPath: r.text("DATAPATH") ?? "",
+    userLevel: r.text("USERLEVEL") ?? "",
+    userName: r.text("USERNAME") ?? "",
+    tallyVersion: r.text("TALLYVERSION") ?? "",
+    tallyShortVersion: r.text("TALLYVERSION")?.split(" ")[0] ?? "",
+    isTallyPrime: r.boolean("ISTALLYPRIME") ?? true,
+    isTallyPrimeEditLog: false,
+    isTallyPrimeServer: false,
+  };
+}
+
+export function parseLastAlterIds(xml: string): any {
+  const parsed = parseRawXml(xml);
+  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+  const report = data?.TC_ALTERIDSREPORT ?? data?.LastAlterIdsReport?.LASTALTERIDSREPORT?.LastAlterIdsPart?.LASTALTERIDSPART?.LastAlterIdsLine ?? data;
+  const r = new TallyReader(report);
+  return {
+    mastersLastId: r.number("MASTERSLASTID") ?? 0,
+    vouchersLastId: r.number("VOUCHERSLASTID") ?? 0,
+  };
 }

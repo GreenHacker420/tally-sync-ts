@@ -495,10 +495,10 @@ export const voucherCodec: TallyCodec<Voucher> = {
       eInvoice,
       eWayBill,
       ewayBillDetails: eWayBill,
-      ledgerEntries: ledgerEntries.length ? ledgerEntries : undefined,
-      allLedgerEntries: allLedgerEntries.length ? allLedgerEntries : undefined,
-      inventoryEntries: inventoryEntries.length ? inventoryEntries : undefined,
-      allInventoryEntries: allInventoryEntries.length ? allInventoryEntries : undefined,
+      ledgerEntries: ledgerEntries.length ? ledgerEntries : (allLedgerEntries.length ? allLedgerEntries : undefined),
+      allLedgerEntries: allLedgerEntries.length ? allLedgerEntries : (ledgerEntries.length ? ledgerEntries : undefined),
+      inventoryEntries: inventoryEntries.length ? inventoryEntries : (allInventoryEntries.length ? allInventoryEntries : undefined),
+      allInventoryEntries: allInventoryEntries.length ? allInventoryEntries : (inventoryEntries.length ? inventoryEntries : undefined),
       inventoryAllocations: allInventoryEntries.length ? allInventoryEntries : (inventoryEntries.length ? inventoryEntries : undefined),
       // Flat aliases
       partyGSTIN: gst.partyGstin,
@@ -560,41 +560,79 @@ export const voucherCodec: TallyCodec<Voucher> = {
   },
 
   build(vch: Voucher, options: any = {}): XmlElement {
-    const action = options.action || vch.action || "Create";
+    const action = typeof options === "string" ? options : (options.action || vch.action || (vch.masterId ? "Alter" : "Create"));
+    const identity = typeof options === "object" ? (options.identity || vch.identity) : vch.identity;
+
     const attrs: Record<string, string> = {
       VCHTYPE: vch.voucherType,
       ACTION: action,
     };
 
+    // OBJVIEW
+    if (vch.objView) {
+      attrs.OBJVIEW = vch.objView;
+    } else if (vch.isInvoice) {
+      attrs.OBJVIEW = "Invoice Voucher View";
+    }
+
     // Identity attributes
-    if (vch.identity) {
-      if (vch.identity.kind === "remote-id") {
-        attrs.REMOTEID = vch.identity.remoteId;
-      } else if (vch.identity.kind === "guid") {
-        attrs.TAGNAME = "GUID";
-        attrs.TAGVALUE = vch.identity.guid;
-      } else if (vch.identity.kind === "master-id") {
+    if (identity) {
+      if (identity.mode === "CREATE" || identity.kind === "remote-id") {
+        if (identity.remoteId) attrs.REMOTEID = identity.remoteId;
+      } else if (identity.mode === "MASTER_ID" || identity.kind === "master-id") {
         attrs.TAGNAME = "MASTER ID";
-        attrs.TAGVALUE = String(vch.identity.masterId);
+        attrs.TAGVALUE = String(identity.masterId);
+      } else if (identity.mode === "GUID" || identity.kind === "guid") {
+        attrs.TAGNAME = "GUID";
+        attrs.TAGVALUE = identity.guid;
       }
     } else if (vch.remoteId) {
       attrs.REMOTEID = vch.remoteId;
+    } else if (vch.masterId && action !== "Create") {
+      attrs.TAGNAME = "MASTER ID";
+      attrs.TAGVALUE = String(vch.masterId);
+    } else if (vch.guid && action !== "Create") {
+      attrs.TAGNAME = "GUID";
+      attrs.TAGVALUE = vch.guid;
     }
 
     if (vch.vchKey) attrs.VCHKEY = vch.vchKey;
-    if (vch.objView) attrs.OBJVIEW = vch.objView;
 
     const children: Array<XmlElement | string> = [];
-
-    // Header scalar fields
     const add = (child?: XmlElement) => {
       if (child) children.push(child);
     };
 
+    // REMOTEID element
+    const remoteId = (identity && (identity.mode === "CREATE" || identity.kind === "remote-id"))
+      ? identity.remoteId
+      : vch.remoteId;
+    if (remoteId) add(el("REMOTEID", remoteId));
+
+    if (action === "Cancel" || vch.isCancelled) add(el("ISCANCELLED", "Yes"));
+
     add(el("DATE", formatDateForTally(vch.date)));
     if (vch.effectiveDate) add(el("EFFECTIVEDATE", formatDateForTally(vch.effectiveDate)));
     if (vch.guid) add(el("GUID", vch.guid));
-    if (vch.remoteId) add(el("REMOTEID", vch.remoteId));
+
+    // Persisted view
+    if (vch.persistedView) {
+      add(el("PERSISTEDVIEW", vch.persistedView));
+    } else if (vch.isInvoice) {
+      add(el("PERSISTEDVIEW", "Invoice Voucher View"));
+    }
+
+    // Entry mode
+    const isItemInvoice = vch.vchEntryMode === "Item Invoice" || Boolean(
+      (vch.inventoryAllocations && vch.inventoryAllocations.length > 0) ||
+      (vch.allInventoryEntries && vch.allInventoryEntries.length > 0)
+    );
+    if (vch.vchEntryMode) {
+      add(el("VCHENTRYMODE", vch.vchEntryMode));
+    } else if (isItemInvoice) {
+      add(el("VCHENTRYMODE", "Item Invoice"));
+    }
+
     add(el("VOUCHERTYPENAME", vch.voucherType));
     if (vch.voucherNumber) add(el("VOUCHERNUMBER", vch.voucherNumber));
     if (vch.voucherNumberSeries) add(el("VOUCHERNUMBERSERIES", vch.voucherNumberSeries));
@@ -602,14 +640,11 @@ export const voucherCodec: TallyCodec<Voucher> = {
     if (vch.reference) add(el("REFERENCE", vch.reference));
     if (vch.referenceDate) add(el("REFERENCEDATE", formatDateForTally(vch.referenceDate)));
     if (vch.narration) add(el("NARRATION", vch.narration));
-    if (vch.persistedView) add(el("PERSISTEDVIEW", vch.persistedView));
-    if (vch.vchEntryMode) add(el("VCHENTRYMODE", vch.vchEntryMode));
 
     add(boolElement("ISINVOICE", vch.isInvoice));
     add(boolElement("ISOPTIONAL", vch.isOptional));
     add(boolElement("ISDELETED", vch.isDeleted));
     add(boolElement("ISDEEMEDPOSITIVE", vch.isDeemedPositive));
-    if (action === "Cancel") add(el("ISCANCELLED", "Yes"));
 
     // Party & Buyer snapshots
     const partyName = vch.partyName || vch.partyLedgerName || vch.buyer?.name;
@@ -629,6 +664,26 @@ export const voucherCodec: TallyCodec<Voucher> = {
     const country = vch.buyer?.country || vch.countryOfResidence;
     if (country) add(el("COUNTRYOFRESIDENCE", country));
 
+    // Address
+    const addrList = vch.address || vch.buyer?.address;
+    if (Array.isArray(addrList) && addrList.length > 0) {
+      const addrEls = addrList.map(a => el("ADDRESS", a)).filter((x): x is XmlElement => Boolean(x));
+      if (addrEls.length > 0) {
+        children.push({
+          name: "ADDRESS.LIST",
+          children: addrEls,
+        });
+      }
+    } else if (typeof addrList === "string" && addrList) {
+      const addrEl = el("ADDRESS", addrList);
+      if (addrEl) {
+        children.push({
+          name: "ADDRESS.LIST",
+          children: [addrEl],
+        });
+      }
+    }
+
     // Consignee
     const consigneeName = vch.consignee?.name || vch.consigneeName;
     if (consigneeName) add(el("CONSIGNEENAME", consigneeName));
@@ -647,9 +702,13 @@ export const voucherCodec: TallyCodec<Voucher> = {
       addInv(boolElement("ISDEEMEDPOSITIVE", inv.isDeemedPositive));
       const rateVal = typeof inv.rate === "object" ? inv.rate.raw : String(inv.rate);
       addInv(el("RATE", rateVal));
-      const actQty = typeof inv.actualQuantity === "object" ? inv.actualQuantity.raw : String(inv.actualQuantity || inv.quantity);
+
+      const rawActQty = typeof inv.actualQuantity === "object" ? inv.actualQuantity.raw : String(inv.actualQuantity || inv.quantity);
+      const actQty = rawActQty.startsWith(" ") ? rawActQty : (" " + rawActQty);
       addInv(el("ACTUALQTY", actQty));
-      const billQty = typeof inv.billedQuantity === "object" ? inv.billedQuantity.raw : String(inv.billedQuantity || inv.quantity);
+
+      const rawBillQty = typeof inv.billedQuantity === "object" ? inv.billedQuantity.raw : String(inv.billedQuantity || inv.quantity);
+      const billQty = rawBillQty.startsWith(" ") ? rawBillQty : (" " + rawBillQty);
       addInv(el("BILLEDQTY", billQty));
       addInv(amountElement("AMOUNT", inv.amount));
 
@@ -662,8 +721,10 @@ export const voucherCodec: TallyCodec<Voucher> = {
           addB(el("BATCHNAME", b.batchName || "Primary Batch"));
           if (b.batchId !== undefined) addB(el("BATCHID", b.batchId));
           addB(amountElement("AMOUNT", b.amount || inv.amount));
-          addB(el("ACTUALQTY", typeof b.actualQuantity === "object" ? b.actualQuantity.raw : (b.actualQuantity ? String(b.actualQuantity) : actQty)));
-          addB(el("BILLEDQTY", typeof b.billedQuantity === "object" ? b.billedQuantity.raw : (b.billedQuantity ? String(b.billedQuantity) : billQty)));
+          const bRawAct = typeof b.actualQuantity === "object" ? b.actualQuantity.raw : (b.actualQuantity ? String(b.actualQuantity) : rawActQty);
+          addB(el("ACTUALQTY", bRawAct.startsWith(" ") ? bRawAct : (" " + bRawAct)));
+          const bRawBill = typeof b.billedQuantity === "object" ? b.billedQuantity.raw : (b.billedQuantity ? String(b.billedQuantity) : rawBillQty);
+          addB(el("BILLEDQTY", bRawBill.startsWith(" ") ? bRawBill : (" " + bRawBill)));
           addB(el("BATCHRATE", typeof b.batchRate === "object" ? b.batchRate.raw : (b.batchRate ? String(b.batchRate) : rateVal)));
           invChildren.push({ name: "BATCHALLOCATIONS.LIST", children: bChildren });
         }

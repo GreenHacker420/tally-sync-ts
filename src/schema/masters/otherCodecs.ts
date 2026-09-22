@@ -182,6 +182,8 @@ export const costCentreCodec: TallyCodec<CostCentre> = {
       parent: r.text("PARENT") ?? "",
       emailId: r.text("EMAILID"),
       showOpeningBal: r.boolean("REVENUELEDFOROPBAL"),
+      masterId: r.number("MASTERID"),
+      alterId: r.number("ALTERID"),
       _raw: node,
     };
   },
@@ -240,10 +242,23 @@ export const gstRegistrationCodec: TallyCodec<GSTRegistration> = {
   xmlTag: "TAXUNIT",
   parse(node) {
     const r = new TallyReader(node);
+    const regDetails = r.list("GSTREGISTRATIONDETAILS.LIST").map(d => {
+      const dr = new TallyReader(d);
+      return {
+        applicableFrom: dr.text("FROMDATE") ?? dr.text("APPLICABLEFROM"),
+        gstRegistrationType: dr.text("REGISTRATIONTYPE") ?? dr.text("GSTREGISTRATIONTYPE"),
+        state: dr.text("STATE"),
+        placeOfSupply: dr.text("PLACEOFSUPPLY"),
+        isStateCessOn: dr.boolean("ISSTATECESSON"),
+      };
+    });
+
     return {
       name: r.attr("NAME") ?? r.text("NAME") ?? "",
       stateName: r.text("STATENAME") ?? "",
-      gstin: r.text("GSTIN"),
+      gstin: r.text("GSTREGNUMBER") ?? r.text("GSTIN"),
+      isEwayBillApplicable: r.boolean("ISEWAYBILLPRINTAPPLICABLE") ?? r.boolean("ISEWAYBILLAPPLICABLE"),
+      registrationDetails: regDetails.length ? regDetails : undefined,
       _raw: node,
     };
   },
@@ -263,8 +278,10 @@ export const attendanceTypeCodec: TallyCodec<AttendanceType> = {
     return {
       name: r.attr("NAME") ?? r.text("NAME") ?? "",
       parent: r.text("PARENT") ?? "",
-      attendanceType: r.text("ATTENDANCETYPE"),
+      attendanceType: r.text("ATTENDANCETYPE") ?? r.text("ATTENDANCEONPRODUCTION"),
       unit: r.text("BASEUNITS"),
+      masterId: r.number("MASTERID"),
+      alterId: r.number("ALTERID"),
       _raw: node,
     };
   },
@@ -286,6 +303,8 @@ export const budgetCodec: TallyCodec<Budget> = {
       parent: r.text("PARENT") ?? "",
       startingFrom: r.text("STARTINGFROM"),
       endingAt: r.text("ENDINGAT"),
+      masterId: r.number("MASTERID"),
+      alterId: r.number("ALTERID"),
       _raw: node,
     };
   },

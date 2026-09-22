@@ -1,3 +1,5 @@
+import { formatDateForTally } from "./xml/values.js";
+import { escapeXmlText } from "./xml/escaping.js";
 import {
   buildExportCollectionXml,
   buildPostXml,
@@ -78,9 +80,25 @@ export class TallyClient {
   private transport: TallyTransport;
   private defaultCompany?: string;
 
-  constructor(options: TallyClientOptions = {}) {
-    this.transport = options.transport || new FetchTallyTransport({ baseURL: options.url || "http://localhost", port: 9000, timeoutMinutes: (options.timeout || 30000) / 60000 });
-    this.defaultCompany = options.company;
+  constructor(
+    urlOrOptions?: string | TallyClientOptions,
+    port?: number,
+    timeoutMinutes?: number,
+    transport?: TallyTransport
+  ) {
+    if (typeof urlOrOptions === "object" && urlOrOptions !== null) {
+      this.transport = urlOrOptions.transport || new FetchTallyTransport({
+        baseURL: urlOrOptions.url || "http://localhost",
+        port: 9000,
+        timeoutMinutes: (urlOrOptions.timeout || 30000) / 60000,
+      });
+      this.defaultCompany = urlOrOptions.company;
+    } else {
+      const url = urlOrOptions || "http://localhost";
+      const p = port || 9000;
+      const timeout = timeoutMinutes || 3;
+      this.transport = transport || new FetchTallyTransport({ baseURL: url, port: p, timeoutMinutes: timeout });
+    }
   }
 
   private async sendRequest(xml: string, requestName: string): Promise<string> {
@@ -348,6 +366,36 @@ export class TallyClient {
     const reqXml = buildPeriodicVoucherStatisticsXml({ company: this.defaultCompany, ...options });
     const respXml = await this.sendRequest(reqXml, "Get Periodic Voucher Statistics");
     return parsePeriodicVoucherStatistics(respXml);
+  }
+
+  public async getReport(reportName: string, options: any = {}): Promise<string> {
+    const fromDate = formatDateForTally(options.fromDate);
+    const toDate = formatDateForTally(options.toDate);
+    const company = options.company || this.defaultCompany;
+    const reqXml = `<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>DATA</TYPE>
+    <ID>${escapeXmlText(reportName)}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$SysName:XML</SVEXPORTFORMAT>
+        ${company ? `<SVCURRENTCOMPANY>${escapeXmlText(company)}</SVCURRENTCOMPANY>` : ""}
+        ${fromDate ? `<SVFROMDATE>${fromDate}</SVFROMDATE>` : ""}
+        ${toDate ? `<SVTODATE>${toDate}</SVTODATE>` : ""}
+      </STATICVARIABLES>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+    return this.sendRequest(reqXml, `Get Report ${reportName}`);
+  }
+
+  public async getGSTComputation(options: any = {}): Promise<string> {
+    return this.getReport("GSTComputation", options);
   }
 }
 

@@ -20,49 +20,73 @@ export function asArray<T>(val: T | T[] | undefined | null): T[] {
 }
 
 export class TallyReader {
-  constructor(private readonly node: Record<string, unknown>) {}
+  private readonly node: Record<string, unknown>;
+
+  constructor(node: Record<string, unknown> | unknown[] | undefined | null) {
+    if (Array.isArray(node)) {
+      this.node = (node[0] && typeof node[0] === "object") ? (node[0] as Record<string, unknown>) : {};
+    } else if (node && typeof node === "object") {
+      this.node = node as Record<string, unknown>;
+    } else {
+      this.node = {};
+    }
+  }
 
   raw(tag: string): unknown {
-    return this.node[tag];
+    if (!this.node || typeof this.node !== "object") return undefined;
+    if (this.node[tag] !== undefined) return this.node[tag];
+    const upper = tag.toUpperCase();
+    for (const [k, v] of Object.entries(this.node)) {
+      if (k.toUpperCase() === upper) return v;
+    }
+    return undefined;
   }
 
   text(tag: string): string | undefined {
-    return tallyText(this.node[tag]);
+    return tallyText(this.raw(tag));
   }
 
   number(tag: string): number | undefined {
-    return tallyNumber(this.node[tag]);
+    return tallyNumber(this.raw(tag));
   }
 
   boolean(tag: string): boolean | undefined {
-    return tallyBoolean(this.node[tag]);
+    return tallyBoolean(this.raw(tag));
   }
 
   logical(tag: string): TallyLogical {
-    return tallyLogical(this.node[tag]);
+    return tallyLogical(this.raw(tag));
   }
 
   quantity(tag: string): TallyQuantity | undefined {
-    return parseQuantity(this.node[tag]);
+    return parseQuantity(this.raw(tag));
   }
 
   rate(tag: string): TallyRate | undefined {
-    return parseRate(this.node[tag]);
+    return parseRate(this.raw(tag));
   }
 
   amount(tag: string): TallyAmount | undefined {
-    return parseAmount(this.node[tag]);
+    return parseAmount(this.raw(tag));
+  }
+
+  amountVal(tag: string): number | undefined {
+    return parseAmount(this.raw(tag))?.value;
   }
 
   list(tag: string): Record<string, unknown>[] {
-    return asArray(this.node[tag]).filter(
+    const rawVal = this.raw(tag);
+    if (!rawVal) return [];
+    return asArray(rawVal).filter(
       (v): v is Record<string, unknown> => !!v && typeof v === "object"
     );
   }
 
   attr(name: string): string | undefined {
     return tallyText(
-      this.node[`@_${name.toUpperCase()}`] ?? this.node[`@_${name}`]
+      this.node[`@_${name.toUpperCase()}`] ??
+      this.node[`@_${name}`] ??
+      this.raw(`@_${name}`)
     );
   }
 
@@ -78,9 +102,12 @@ export class TallyReader {
     const unknown: Record<string, unknown> = {};
     let count = 0;
     for (const [k, v] of Object.entries(this.node)) {
-      if (k.startsWith("@_") || knownTags.has(k)) continue;
-      unknown[k] = v;
-      count++;
+      if (k.startsWith("@_") || k.startsWith("?") || k === "#text") continue;
+      const upper = k.toUpperCase();
+      if (!knownTags.has(upper)) {
+        unknown[k] = v;
+        count++;
+      }
     }
     return count > 0 ? unknown : undefined;
   }

@@ -1,4 +1,5 @@
-import { TallyReader } from "../../xml/reader.js";
+import { TallyReader, asArray } from "../../xml/reader.js";
+import { tallyText } from "../../xml/values.js";
 import { XmlElement } from "../../xml/types.js";
 import { el, boolElement, amountElement } from "../../xml/writer.js";
 import { TallyCodec } from "../registry.js";
@@ -22,6 +23,40 @@ export const stockItemCodec: TallyCodec<StockItem> = {
 
     const hsnNode = r.list("HSNDETAILS.LIST")[0];
     const hsnR = hsnNode ? new TallyReader(hsnNode) : undefined;
+
+    const mailingList = asArray(node["MAILINGNAME.LIST"]);
+    const mailingNames = mailingList.flatMap((item: any) => asArray(item?.MAILINGNAME ?? item))
+      .concat(asArray(node["MAILINGNAME"]))
+      .map(tallyText)
+      .filter((x): x is string => !!x);
+
+    const batchAllocations = r.list("BATCHALLOCATIONS.LIST").map(b => {
+      const br = new TallyReader(b);
+      return {
+        batchName: br.text("BATCHNAME") ?? "",
+        godownName: br.text("GODOWNNAME") ?? "",
+        quantity: br.number("OPENINGBALANCE") ?? br.number("ACTUALQTY") ?? 0,
+        rate: br.number("OPENINGRATE") ?? br.number("RATE") ?? 0,
+        value: br.number("OPENINGVALUE") ?? br.number("AMOUNT") ?? 0,
+      };
+    });
+
+    const components = r.list("MULTICOMPONENTLIST.LIST").map(c => {
+      const cr = new TallyReader(c);
+      const items = cr.list("MULTICOMPONENTITEMLIST.LIST").map(ci => {
+        const cir = new TallyReader(ci);
+        return {
+          natureOfComponent: cir.text("NATUREOFITEM") ?? "",
+          itemName: cir.text("STOCKITEMNAME") ?? "",
+          actualQuantity: cir.number("ACTUALQTY") ?? 0,
+        };
+      });
+      return {
+        name: cr.text("COMPONENTLISTNAME") ?? "",
+        baseQuantity: cr.number("COMPONENTBASICQTY") ?? 1,
+        componentListItems: items,
+      };
+    });
 
     return {
       name: r.attr("NAME") ?? r.text("NAME") ?? "",
@@ -58,6 +93,9 @@ export const stockItemCodec: TallyCodec<StockItem> = {
       standardPrice: r.number("STANDARDPRICE"),
       mrpRate: r.number("MRPRATE"),
       reorderLevel: r.number("REORDERLEVEL"),
+      mailingNames: mailingNames.length ? mailingNames : undefined,
+      openingBatchAllocations: batchAllocations.length ? batchAllocations : undefined,
+      components: components.length ? components : undefined,
       minimumOrderQty: r.number("MINIMUMORDERQTY"),
       hsnCode: r.text("GSTHSNNAME") ?? hsnR?.text("HSNCODE"),
       hsnDescription: r.text("GSTHSNDESCRIPTION") ?? hsnR?.text("HSN"),
