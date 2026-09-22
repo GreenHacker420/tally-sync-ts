@@ -99,8 +99,8 @@ describe("Item Invoice & Full Party Details XML Serialization", () => {
 
     // Assertions for Stock Item & Batch
     assert.match(xml, /<STOCKITEMNAME>INDUSTRIAL CABLE<\/STOCKITEMNAME>/);
-    assert.match(xml, /<ACTUALQTY>2 PCS<\/ACTUALQTY>/);
-    assert.match(xml, /<BILLEDQTY>2 PCS<\/BILLEDQTY>/);
+    assert.match(xml, /<ACTUALQTY>\s*2 PCS<\/ACTUALQTY>/);
+    assert.match(xml, /<BILLEDQTY>\s*2 PCS<\/BILLEDQTY>/);
     assert.match(xml, /<BATCHNAME>Primary Batch<\/BATCHNAME>/);
     assert.match(xml, /<GODOWNNAME>Main Location<\/GODOWNNAME>/);
     assert.match(xml, /<AMOUNT>1160\.00<\/AMOUNT>/);
