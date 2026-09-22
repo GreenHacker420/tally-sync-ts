@@ -547,6 +547,8 @@ export interface LedgerEntry {
   amount: number | TallyAmount;
   isDeemedPositive: boolean;
   isPartyLedger?: boolean;
+  methodType?: string;
+  roundType?: string;
   billAllocations?: BillAllocation[];
   costCentreAllocations?: CostCentreAllocation[];
 }
@@ -628,6 +630,14 @@ export interface Voucher extends TallyObject {
   reference?: string;
   referenceDate?: Date | string;
   partyName?: string;
+  partyLedgerName?: string;
+  buyerName?: string;
+  partyMailingName?: string;
+  consigneeMailingName?: string;
+  stateName?: string;
+  countryOfResidence?: string;
+  address?: string[];
+  buyerAddress?: string[];
   partyGSTIN?: string;
   partyGSTRegistrationType?: string;
   gstRegistration?: string;
@@ -635,7 +645,11 @@ export interface Voucher extends TallyObject {
   consigneeName?: string;
   consigneeGSTIN?: string;
   consigneeState?: string;
+  consigneeCountry?: string;
   voucherGSTClass?: string;
+  vchEntryMode?: "Item Invoice" | "Accounting Invoice" | "As Voucher" | string;
+  persistedView?: string;
+  objView?: string;
   ledgerEntries?: LedgerEntry[];
   inventoryAllocations?: InventoryAllocation[];
   allInventoryEntries?: InventoryAllocation[];

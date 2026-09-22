@@ -43,7 +43,10 @@ export function buildExportCollectionXml(
   const collectionName = `TC_${collectionType}Collection`;
   
   const tallyType = options.collectionType || collectionType;
-  const finalFetchList = options.fetchList || ["MasterId", "*", "CanDelete"];
+  const defaultFetch = collectionType === "Voucher"
+    ? ["MasterId", "*", "CanDelete", "AllLedgerEntries.*", "AllInventoryEntries.*", "LedgerEntries.*", "InventoryEntries.*"]
+    : ["MasterId", "*", "CanDelete"];
+  const finalFetchList = options.fetchList || defaultFetch;
   
   const fromDate = formatDateForTally(options.fromDate);
   const toDate = formatDateForTally(options.toDate);
@@ -844,6 +847,11 @@ export function voucherToXml(
       : undefined);
 
   let voucherTagAttrs = `VCHTYPE="${escapeXml(voucher.voucherType)}" ACTION="${action}"`;
+  if (voucher.objView) {
+    voucherTagAttrs += ` OBJVIEW="${escapeXml(voucher.objView)}"`;
+  } else if (voucher.isInvoice) {
+    voucherTagAttrs += ` OBJVIEW="Invoice Voucher View"`;
+  }
 
   if (identity) {
     switch (identity.mode) {
@@ -863,12 +871,17 @@ export function voucherToXml(
 
     const dateStr = formatDateForTally(voucher.date);
 
+  const isItemInvoice = voucher.vchEntryMode === "Item Invoice" || Boolean(voucher.inventoryAllocations && voucher.inventoryAllocations.length > 0);
+  const listTag = isItemInvoice ? "LEDGERENTRIES.LIST" : "ALLLEDGERENTRIES.LIST";
+
   const ledgerEntriesXml = voucher.ledgerEntries
     ? voucher.ledgerEntries.map(e => `
-      <ALLLEDGERENTRIES.LIST>
+      <${listTag}>
         <LEDGERNAME>${escapeXml(e.ledgerName)}</LEDGERNAME>
         <ISDEEMEDPOSITIVE>${formatBoolForTally(e.isDeemedPositive)}</ISDEEMEDPOSITIVE>
         ${e.isPartyLedger !== undefined ? `<ISPARTYLEDGER>${formatBoolForTally(e.isPartyLedger)}</ISPARTYLEDGER>` : ""}
+        ${e.methodType ? `<METHODTYPE>${escapeXml(e.methodType)}</METHODTYPE>` : ""}
+        ${e.roundType ? `<ROUNDTYPE>${escapeXml(e.roundType)}</ROUNDTYPE>` : ""}
         <AMOUNT>${formatAmountForTally(e.amount)}</AMOUNT>
         ${e.billAllocations ? e.billAllocations.map(b => `
         <BILLALLOCATIONS.LIST>
@@ -885,7 +898,7 @@ export function voucherToXml(
             <AMOUNT>${formatAmountForTally(c.amount)}</AMOUNT>
           </COSTCENTREALLOCATIONS.LIST>
         </CATEGORYALLOCATIONS.LIST>`).join("") : ""}
-      </ALLLEDGERENTRIES.LIST>`).join("")
+      </${listTag}>`).join("")
     : "";
 
   const inventoryXml = voucher.inventoryAllocations
@@ -893,6 +906,8 @@ export function voucherToXml(
       <ALLINVENTORYENTRIES.LIST>
         <STOCKITEMNAME>${escapeXml(inv.stockItemName)}</STOCKITEMNAME>
         <RATE>${escapeXml(inv.rate)}</RATE>
+        <ACTUALQTY> ${escapeXml(inv.actualQuantity ?? inv.quantity)}</ACTUALQTY>
+        <BILLEDQTY> ${escapeXml(inv.billedQuantity ?? inv.quantity)}</BILLEDQTY>
         <ACTUALQUANTITY>${escapeXml(inv.actualQuantity ?? inv.quantity)}</ACTUALQUANTITY>
         <BILLEDQUANTITY>${escapeXml(inv.billedQuantity ?? inv.quantity)}</BILLEDQUANTITY>
         <AMOUNT>${formatAmountForTally(inv.amount)}</AMOUNT>
@@ -905,7 +920,7 @@ export function voucherToXml(
           ${b.trackingNumber ? `<TRACKINGNUMBER>${escapeXml(b.trackingNumber)}</TRACKINGNUMBER>` : ""}
           ${b.actualQuantity !== undefined ? `<ACTUALQTY>${escapeXml(b.actualQuantity as any)}</ACTUALQTY>` : ""}
           ${b.billedQuantity !== undefined ? `<BILLEDQTY>${escapeXml(b.billedQuantity as any)}</BILLEDQTY>` : ""}
-          ${b.rate !== undefined ? `<RATE>${escapeXml(b.rate as any)}</RATE>` : ""}
+          ${b.rate !== undefined ? `<RATE>${escapeXml(b.rate as any)}</RATE><BATCHRATE>${escapeXml(b.rate as any)}</BATCHRATE>` : ""}
           ${b.amount !== undefined ? `<AMOUNT>${formatAmountForTally(b.amount)}</AMOUNT>` : ""}
         </BATCHALLOCATIONS.LIST>`).join("") : ""}
         ${inv.accountingAllocations ? inv.accountingAllocations.map(a => `
@@ -934,6 +949,24 @@ export function voucherToXml(
     ${identity?.mode === "CREATE" ? `<REMOTEID>${escapeXml(identity.remoteId)}</REMOTEID>` : (voucher.remoteId ? `<REMOTEID>${escapeXml(voucher.remoteId)}</REMOTEID>` : "")}
     ${(action === "Cancel" || voucher.isCancelled) ? `<ISCANCELLED>Yes</ISCANCELLED>` : ""}
     <DATE>${dateStr}</DATE>
+    ${voucher.effectiveDate ? `<EFFECTIVEDATE>${formatDateForTally(voucher.effectiveDate)}</EFFECTIVEDATE>` : ""}
+    ${voucher.persistedView ? `<PERSISTEDVIEW>${escapeXml(voucher.persistedView)}</PERSISTEDVIEW>` : (voucher.isInvoice ? `<PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>` : "")}
+    ${voucher.vchEntryMode ? `<VCHENTRYMODE>${escapeXml(voucher.vchEntryMode)}</VCHENTRYMODE>` : (isItemInvoice ? `<VCHENTRYMODE>Item Invoice</VCHENTRYMODE>` : "")}
+    ${voucher.partyName ? `<PARTYNAME>${escapeXml(voucher.partyName)}</PARTYNAME>` : ""}
+    ${voucher.buyerName ? `<BASICBUYERNAME>${escapeXml(voucher.buyerName)}</BASICBUYERNAME>` : (voucher.partyName ? `<BASICBUYERNAME>${escapeXml(voucher.partyName)}</BASICBUYERNAME>` : "")}
+    ${voucher.partyMailingName ? `<PARTYMAILINGNAME>${escapeXml(voucher.partyMailingName)}</PARTYMAILINGNAME>` : (voucher.partyName ? `<PARTYMAILINGNAME>${escapeXml(voucher.partyName)}</PARTYMAILINGNAME>` : "")}
+    ${voucher.consigneeMailingName ? `<CONSIGNEEMAILINGNAME>${escapeXml(voucher.consigneeMailingName)}</CONSIGNEEMAILINGNAME>` : ""}
+    ${voucher.stateName ? `<STATENAME>${escapeXml(voucher.stateName)}</STATENAME>` : ""}
+    ${voucher.countryOfResidence ? `<COUNTRYOFRESIDENCE>${escapeXml(voucher.countryOfResidence)}</COUNTRYOFRESIDENCE>` : ""}
+    ${voucher.consigneeCountry ? `<CONSIGNEECOUNTRYNAME>${escapeXml(voucher.consigneeCountry)}</CONSIGNEECOUNTRYNAME>` : ""}
+    ${voucher.address && voucher.address.length > 0 ? `
+    <ADDRESS.LIST TYPE="String">
+      ${voucher.address.map(a => `<ADDRESS>${escapeXml(a)}</ADDRESS>`).join("")}
+    </ADDRESS.LIST>` : ""}
+    ${voucher.buyerAddress && voucher.buyerAddress.length > 0 ? `
+    <BASICBUYERADDRESS.LIST TYPE="String">
+      ${voucher.buyerAddress.map(a => `<BASICBUYERADDRESS>${escapeXml(a)}</BASICBUYERADDRESS>`).join("")}
+    </BASICBUYERADDRESS.LIST>` : ""}
     <VOUCHERTYPENAME>${escapeXml(voucher.voucherType)}</VOUCHERTYPENAME>
     ${voucher.voucherNumber ? `<VOUCHERNUMBER>${escapeXml(voucher.voucherNumber)}</VOUCHERNUMBER>` : ""}
     ${voucher.partyName ? `<PARTYLEDGERNAME>${escapeXml(voucher.partyName)}</PARTYLEDGERNAME>` : ""}

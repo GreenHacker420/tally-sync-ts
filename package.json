@@ -1,6 +1,6 @@
 {
   "name": "tally-sync-ts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Typed TypeScript client for the Tally Prime and Tally ERP 9 XML/TDL API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

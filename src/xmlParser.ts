@@ -672,7 +672,18 @@ export function parseExportCollection<T>(
       base.narration = getSingleValue(item.NARRATION);
       base.reference = getSingleValue(item.REFERENCE);
       base.referenceDate = getSingleValue(item.REFERENCEDATE);
-      base.partyName = getSingleValue(item.PARTYLEDGERNAME);
+      base.partyName = getSingleValue(item.PARTYNAME) || getSingleValue(item.PARTYLEDGERNAME);
+      base.partyLedgerName = getSingleValue(item.PARTYLEDGERNAME);
+      base.buyerName = getSingleValue(item.BASICBUYERNAME);
+      base.stateName = getSingleValue(item.STATENAME);
+      base.countryOfResidence = getSingleValue(item.COUNTRYOFRESIDENCE);
+      base.placeOfSupply = getSingleValue(item.PLACEOFSUPPLY);
+      base.vchEntryMode = getSingleValue(item.VCHENTRYMODE);
+      base.persistedView = getSingleValue(item.PERSISTEDVIEW);
+      if (item["ADDRESS.LIST"]) {
+        const addrList = asArray(item["ADDRESS.LIST"]?.ADDRESS || item["ADDRESS.LIST"]);
+        base.address = addrList.map((a: any) => String(getSingleValue(a)));
+      }
       base.partyGSTIN = getSingleValue(item.PARTYGSTIN);
       base.partyGSTRegistrationType = getSingleValue(item.GSTREGISTRATIONTYPE);
       base.gstRegistration = getSingleValue(item.GSTREGISTRATION);
@@ -714,6 +725,8 @@ export function parseExportCollection<T>(
           amount: parseTallyNumeric(e.AMOUNT) ?? 0,
           isDeemedPositive: parseTallyBoolean(e.ISDEEMEDPOSITIVE) ?? false,
           isPartyLedger: parseTallyBoolean(e.ISPARTYLEDGER),
+          methodType: getSingleValue(e.METHODTYPE),
+          roundType: getSingleValue(e.ROUNDTYPE),
           billAllocations: e["BILLALLOCATIONS.LIST"] ? asArray(e["BILLALLOCATIONS.LIST"]).map((b: any) => ({
             name: String(getSingleValue(b.NAME) || ""),
             billType: getSingleValue(b.BILLTYPE),
@@ -738,9 +751,9 @@ export function parseExportCollection<T>(
         
         base.inventoryAllocations = rawInv.map((inv: any) => ({
           stockItemName: String(getSingleValue(inv.STOCKITEMNAME)),
-          quantity: getSingleValue(inv.ACTUALQUANTITY ?? inv.BILLEDQUANTITY),
-          actualQuantity: getSingleValue(inv.ACTUALQUANTITY),
-          billedQuantity: getSingleValue(inv.BILLEDQUANTITY),
+          quantity: getSingleValue(inv.ACTUALQTY ?? inv.BILLEDQTY ?? inv.ACTUALQUANTITY ?? inv.BILLEDQUANTITY),
+          actualQuantity: getSingleValue(inv.ACTUALQTY ?? inv.ACTUALQUANTITY),
+          billedQuantity: getSingleValue(inv.BILLEDQTY ?? inv.BILLEDQUANTITY),
           rate: getSingleValue(inv.RATE),
           amount: parseTallyNumeric(inv.AMOUNT) ?? 0,
           isDeemedPositive: parseTallyBoolean(inv.ISDEEMEDPOSITIVE) ?? false,
