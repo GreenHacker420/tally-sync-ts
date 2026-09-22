@@ -309,6 +309,7 @@ export interface BaseTallyObject extends BaseObject {
   guid?: string;
   remoteId?: string;
   action?: "Create" | "Alter" | "Delete" | "Cancel";
+  _raw?: any;
 }
 
 export interface TallyObject extends BaseTallyObject {
@@ -343,13 +344,20 @@ export interface Company extends TallyObject {
   phoneNumber?: string;
   mobileNumber?: string;
   address?: string;
+  addressLines?: string[];
   faxNumber?: string;
   email?: string;
   website?: string;
   tanNumber?: string;
   tanRegNumber?: string;
   pan?: string;
+  panNumber?: string;
   cin?: string;
+  gstin?: string;
+  currency?: string;
+  baseCurrencySymbol?: string;
+  financialYearFrom?: string;
+  isEducationalMode?: boolean;
   // Settings
   isInventoryOn?: boolean;
   integrateAccountswithInventory?: boolean;
@@ -412,6 +420,12 @@ export interface Ledger extends BaseAliasedMasterObject {
   contact?: string;
   partyGstin?: string;
   state?: string;
+  stateName?: string;
+  country?: string;
+  placeOfSupply?: string;
+  gstRegistrationType?: string;
+  gstin?: string;
+  addressLines?: string[];
 }
 
 export interface CostCentre extends BaseAliasedMasterObject {
@@ -488,6 +502,7 @@ export interface ComponentList {
 
 export interface StockItem extends BaseAliasedMasterObject {
   baseUnit: string;
+  additionalUnits?: string;
   stockGroup?: string;
   stockCategory?: string;
   gstApplicable?: string;
@@ -502,7 +517,6 @@ export interface StockItem extends BaseAliasedMasterObject {
   maintainInBranches?: boolean;
   useExpiryDates?: boolean;
   trackDateOfManufacturing?: boolean;
-  additionalUnits?: string;
   inclusiveOfTax?: boolean;
   denominator?: number;
   conversion?: number;
@@ -510,9 +524,24 @@ export interface StockItem extends BaseAliasedMasterObject {
   openingBalance?: number;
   openingRate?: number;
   openingValue?: number;
+  closingBalance?: number;
+  closingRate?: number;
+  closingValue?: number;
+  standardCost?: number;
+  standardPrice?: number;
+  mrpRate?: number;
+  reorderLevel?: number;
+  minimumOrderQty?: number;
   mailingNames?: string[];
   gstDetails?: GSTDetail[];
   hsnDetails?: HSNDetail[];
+  hsnCode?: string;
+  hsnDescription?: string;
+  taxability?: string;
+  integratedTaxRate?: number;
+  centralTaxRate?: number;
+  stateTaxRate?: number;
+  cessRate?: number;
   openingBatchAllocations?: OpeningBatchAllocation[];
   components?: ComponentList[];
 }
@@ -542,29 +571,103 @@ export interface EmployeeGroup extends CostCentre {
 }
 
 // Transaction Models
+export interface BankAllocation {
+  transactionType?: string;
+  paymentMode?: string;
+  instrumentNumber?: string;
+  instrumentDate?: string;
+  chequeCrossComment?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifsCode?: string;
+  paymentFavouring?: string;
+  payeeName?: string;
+  amount?: number | TallyAmount;
+}
+
 export interface LedgerEntry {
   ledgerName: string;
   amount: number | TallyAmount;
   isDeemedPositive: boolean;
   isPartyLedger?: boolean;
+  isDutyLedger?: boolean;
+  isSystem?: boolean;
+  isLastDeemedPositive?: boolean;
+  narration?: string;
   methodType?: string;
   roundType?: string;
+  roundLimit?: number;
+  gstDutyHead?: string;
+  taxClassificationName?: string;
+  statClassificationName?: string;
+  rateOfTax?: number;
+  gstTaxRate?: number;
+  gstAssessableValue?: number;
+  igstLiability?: number;
+  cgstLiability?: number;
+  sgstLiability?: number;
+  gstCessLiability?: number;
+  computedAssessableValue?: number;
+  computedIgst?: number;
+  computedCgst?: number;
+  computedSgst?: number;
+  computedCess?: number;
   billAllocations?: BillAllocation[];
+  bankAllocations?: BankAllocation[];
   costCentreAllocations?: CostCentreAllocation[];
+  _raw?: any;
 }
 
 export interface InventoryAllocation {
   stockItemName: string;
+  description?: string;
   quantity: string | number;
   rate: string | number;
   amount: number | TallyAmount;
+  unit?: string;
   isDeemedPositive: boolean;
+  discount?: number;
+  discountAmount?: number;
+  addlAmount?: number;
+  addlCostPerc?: number;
+  hsnCode?: string;
+  hsnDescription?: string;
+  hsnSourceType?: string;
+  hsnItemSource?: string;
+  gstSourceType?: string;
+  gstItemSource?: string;
+  rateInferApplicability?: string;
+  hsnInferApplicability?: string;
+  taxability?: string;
+  typeOfSupply?: string;
+  gstOverrideStoredNature?: string;
+  isReverseChargeApplicable?: boolean;
+  computedAssessableValue?: number;
+  computedCgst?: number;
+  computedSgst?: number;
+  computedIgst?: number;
+  computedCess?: number;
+  computedCessOnQty?: number;
+  gstAssessableValue?: number;
+  mrpRate?: number;
+  mrpAssessableValue?: number;
+  mrpComputedCgst?: number;
+  mrpComputedSgst?: number;
+  mrpComputedIgst?: number;
+  mrpComputedCess?: number;
+  isScrap?: boolean;
+  isPrimaryItem?: boolean;
+  isCustomsClearance?: boolean;
+  isTrackComponent?: boolean;
+  isTrackProduction?: boolean;
+  isAutoNegate?: boolean;
   ledgers?: LedgerEntry[];
   billedQuantity?: string | number | TallyQuantity;
   actualQuantity?: string | number | TallyQuantity;
   batchAllocations?: VoucherBatchAllocation[];
   accountingAllocations?: AccountingAllocation[];
   gstRateDetails?: VoucherGSTRateDetail[];
+  _raw?: any;
 }
 
 export interface BillAllocation {
@@ -572,6 +675,10 @@ export interface BillAllocation {
   billType?: string;
   amount: number | TallyAmount;
   dueDate?: Date | string | DueDate;
+  billDate?: string;
+  billCreationDate?: string;
+  billId?: number;
+  _raw?: any;
 }
 
 export interface CostCentreAllocation {
@@ -584,23 +691,42 @@ export interface AccountingAllocation {
   ledgerName: string;
   amount: number | TallyAmount;
   isDeemedPositive?: boolean;
+  isPartyLedger?: boolean;
+  gstDutyHead?: string;
+  roundType?: string;
+  methodType?: string;
+  taxClassificationName?: string;
+  isGstAssessableValueOverridden?: boolean;
+  strdIsGstApplicable?: boolean;
 }
 
 export interface VoucherBatchAllocation {
   godownName: string;
   batchName?: string;
+  batchId?: number;
   orderNo?: string;
   trackingNumber?: string;
+  indentNo?: string;
   amount?: number | TallyAmount;
   actualQuantity?: string | number | TallyQuantity;
   billedQuantity?: string | number | TallyQuantity;
   rate?: string | number | TallyRate;
+  batchRate?: string | number;
+  expiryPeriod?: string;
+  mfgDate?: string;
+  discount?: number;
+  discountAmount?: number;
+  destinationGodownName?: string;
+  orderClosureReason?: string;
+  orderDueDate?: string;
+  _raw?: any;
 }
 
 export interface VoucherGSTRateDetail {
   dutyHead?: string;
   valuationType?: string;
   rate?: number;
+  ratePerUnit?: number;
 }
 
 export interface EWayBillDetails {
@@ -623,41 +749,94 @@ export interface Voucher extends TallyObject {
   guid?: string;
   identity?: VoucherIdentity;
   isCancelled?: boolean;
+  isDeleted?: boolean;
+  isInvoice?: boolean;
+  isOptional?: boolean;
+  isDeemedPositive?: boolean;
+  asOriginal?: boolean;
+  asPayslip?: boolean;
+  isDeletedVchRetained?: boolean;
   date: Date | string;
+  effectiveDate?: Date | string;
   voucherType: string;
+  voucherTypeName?: string;
   voucherNumber?: string;
+  voucherNumberSeries?: string;
+  numberingStyle?: string;
+  vchKey?: string | number;
+  vchRetainKey?: string | number;
+  reuseHoleId?: number;
   narration?: string;
   reference?: string;
   referenceDate?: Date | string;
   partyName?: string;
   partyLedgerName?: string;
-  buyerName?: string;
   partyMailingName?: string;
+  buyerName?: string;
+  buyerAddress?: string[];
+  buyerPinNumber?: string;
+  buyerState?: string;
+  buyerCountry?: string;
+  buyerGSTIN?: string;
+  buyerPAN?: string;
+  buyerPlace?: string;
+  consigneeName?: string;
   consigneeMailingName?: string;
+  consigneeAddress?: string[];
+  consigneePinNumber?: string;
+  consigneePincode?: string;
+  consigneeState?: string;
+  consigneeCountry?: string;
+  consigneeGSTIN?: string;
+  consigneePlace?: string;
   stateName?: string;
   countryOfResidence?: string;
   address?: string[];
-  buyerAddress?: string[];
   partyGSTIN?: string;
   partyGSTRegistrationType?: string;
   gstRegistration?: string;
   placeOfSupply?: string;
-  consigneeName?: string;
-  consigneeGSTIN?: string;
-  consigneeState?: string;
-  consigneeCountry?: string;
+  partyPincode?: string;
+  companyGSTIN?: string;
+  companyState?: string;
+  dispatchFromName?: string;
+  dispatchFromAddress?: string[];
+  dispatchFromState?: string;
+  dispatchFromPlace?: string;
+  dispatchFromPincode?: string;
+  shipToPlace?: string;
+  billToPlace?: string;
+  orderNo?: string;
+  orderDate?: string;
+  dispatchDocNo?: string;
+  dispatchedThrough?: string;
+  destination?: string;
+  carrierName?: string;
+  billOfLadingNo?: string;
+  billOfLadingDate?: string;
+  vehicleNo?: string;
+  termsOfPayment?: string;
+  deliveryNotes?: string;
+  irn?: string;
+  irnAckNo?: string;
+  irnAckDate?: string;
+  irnQrCode?: string;
+  irnStatus?: string;
+  irnCancelDate?: string;
+  irnCancelReason?: string;
   voucherGSTClass?: string;
   vchEntryMode?: "Item Invoice" | "Accounting Invoice" | "As Voucher" | string;
   persistedView?: string;
   objView?: string;
+  viewType?: string;
+  amount?: number | TallyAmount;
+  totalTaxAmount?: number;
+  netAmount?: number;
+  roundOffAmount?: number;
   ledgerEntries?: LedgerEntry[];
   inventoryAllocations?: InventoryAllocation[];
   allInventoryEntries?: InventoryAllocation[];
   ewayBillDetails?: EWayBillDetails;
-  isInvoice?: boolean;
-  isOptional?: boolean;
-  effectiveDate?: Date | string;
-  viewType?: string;
 }
 
 export interface MasterStatistics {

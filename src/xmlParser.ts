@@ -27,6 +27,20 @@ import {
   Budget
 } from "./types.js";
 import { asArray, cleanResponseXml, getSingleValue, parseTallyBoolean, parseTallyNumeric } from "./xmlUtils.js";
+function extractAddressLines(node: any): string[] {
+  if (!node) return [];
+  const rawList = asArray(node?.ADDRESS || node);
+  return rawList
+    .map((a: any) => {
+      if (a === null || a === undefined) return "";
+      if (typeof a === "object") {
+        return String(getSingleValue(a["#text"] ?? a));
+      }
+      return String(getSingleValue(a));
+    })
+    .map((s: string) => s.replace(/\u0004/g, "").trim())
+    .filter((s: string) => s.length > 0 && s !== "[object Object]");
+}
 
 export { asArray, cleanResponseXml, getSingleValue, parseTallyBoolean, parseTallyNumeric } from "./xmlUtils.js";
 
@@ -280,6 +294,7 @@ export function parseExportCollection<T>(
       enteredBy: getSingleValue(item.ENTEREDBY),
       alteredBy: getSingleValue(item.ALTEREDBY),
       canDelete: item.CANDELETE ? String(getSingleValue(item.CANDELETE)) === "Yes" : undefined,
+      _raw: item,
     };
 
     if (type === "Ledger") {
@@ -313,6 +328,29 @@ export function parseExportCollection<T>(
       base.mobile = getSingleValue(item.LEDGERMOBILE);
       base.contact = getSingleValue(item.LEDGERCONTACT);
       base.partyGstin = getSingleValue(item.PARTYGSTIN);
+      base.stateName = getSingleValue(item.STATENAME) || getSingleValue(item.PRIORSTATENAME) || getSingleValue(item.LEDSTATENAME);
+      base.country = getSingleValue(item.COUNTRYOFRESIDENCE) || getSingleValue(item.COUNTRYNAME);
+      base.placeOfSupply = getSingleValue(item.PLACEOFSUPPLY);
+      base.gstRegistrationType = getSingleValue(item.GSTREGISTRATIONTYPE);
+      base.gstin = getSingleValue(item.PARTYGSTIN);
+      if (item["LEDGSTREGDETAILS.LIST"]) {
+        const gstReg = asArray(item["LEDGSTREGDETAILS.LIST"])[0] as any;
+        if (gstReg) {
+          base.gstin = base.gstin || getSingleValue(gstReg.GSTIN);
+          base.gstRegistrationType = base.gstRegistrationType || getSingleValue(gstReg.GSTREGISTRATIONTYPE);
+          base.placeOfSupply = base.placeOfSupply || getSingleValue(gstReg.PLACEOFSUPPLY);
+        }
+      }
+      if (item["LEDMAILINGDETAILS.LIST"]) {
+        const mail = asArray(item["LEDMAILINGDETAILS.LIST"])[0] as any;
+        if (mail) {
+          base.stateName = base.stateName || getSingleValue(mail.STATE);
+          base.country = base.country || getSingleValue(mail.COUNTRY);
+          if (mail["ADDRESS.LIST"]) {
+            base.addressLines = extractAddressLines(mail["ADDRESS.LIST"]);
+          }
+        }
+      }
       
       // parse language name list / alias
       const langData = parseLanguageNameList(item);
@@ -493,6 +531,7 @@ export function parseExportCollection<T>(
       base.name = item["@_NAME"] ? String(getSingleValue(item["@_NAME"])) : (item.NAME ? String(getSingleValue(item.NAME)) : "");
       base.startingFrom = getSingleValue(item.STARTINGFROM);
       base.booksBeginningFrom = getSingleValue(item.BOOKSFROM || item.BOOKSBEGINNINGFROM);
+      base.financialYearFrom = getSingleValue(item.FINANCIALYEARFROM || item.STARTINGFROM);
       base.formalName = getSingleValue(item.BASICCOMPANYFORMALNAME);
       base.state = getSingleValue(item.STATENAME);
       base.country = getSingleValue(item.COUNTRYNAME);
@@ -500,13 +539,22 @@ export function parseExportCollection<T>(
       base.phoneNumber = getSingleValue(item.PHONENUMBER);
       base.mobileNumber = getSingleValue(item.MOBILENO);
       base.address = getSingleValue(item.REMOTEFULLLISTNAME);
+      if (item["ADDRESS.LIST"]) {
+        const addrs = asArray(item["ADDRESS.LIST"]?.ADDRESS || item["ADDRESS.LIST"]);
+        base.addressLines = addrs.map((a: any) => String(getSingleValue(a)));
+      }
       base.faxNumber = getSingleValue(item.FAXNUMBER);
       base.email = getSingleValue(item.EMAIL);
       base.website = getSingleValue(item.WEBSITE);
       base.tanNumber = getSingleValue(item.TANUMBER);
       base.tanRegNumber = getSingleValue(item.TANREGNO);
       base.pan = getSingleValue(item.INCOMETAXNUMBER);
+      base.panNumber = getSingleValue(item.INCOMETAXNUMBER || item.PANNUMBER);
       base.cin = getSingleValue(item.CORPORATEIDENTITYNO);
+      base.gstin = getSingleValue(item.GSTIN || item.CMPGSTIN || item.PARTYGSTIN);
+      base.currency = getSingleValue(item.CURRENCYNAME || item.BASECURRENCYNAME);
+      base.baseCurrencySymbol = getSingleValue(item.BASECURRENCYSYMBOL || item.CURRENCYSYMBOL);
+      base.isEducationalMode = parseTallyBoolean(item.ISEDUCATIONALMODE);
       base.isInventoryOn = item.ISINVENTORYON ? String(getSingleValue(item.ISINVENTORYON)) === "Yes" : undefined;
       base.integrateAccountswithInventory = item.ISINTEGRATED ? String(getSingleValue(item.ISINTEGRATED)) === "Yes" : undefined;
       base.isBillWiseOn = item.ISBILLWISEON ? String(getSingleValue(item.ISBILLWISEON)) === "Yes" : undefined;
@@ -667,36 +715,106 @@ export function parseExportCollection<T>(
       }
     } else if (type === "Voucher") {
       base.date = getSingleValue(item.DATE);
+      base.effectiveDate = getSingleValue(item.EFFECTIVEDATE);
       base.voucherType = getSingleValue(item.VOUCHERTYPENAME);
+      base.voucherTypeName = getSingleValue(item.VOUCHERTYPENAME);
       base.voucherNumber = getSingleValue(item.VOUCHERNUMBER);
+      base.voucherNumberSeries = getSingleValue(item.VOUCHERNUMBERSERIES);
+      base.numberingStyle = getSingleValue(item.NUMBERINGSTYLE);
+      base.vchKey = getSingleValue(item.VOUCHERKEY || item["@_VCHKEY"]);
+      base.vchRetainKey = getSingleValue(item.VOUCHERRETAINKEY);
+      base.reuseHoleId = parseTallyNumeric(item.REUSEHOLEID);
       base.narration = getSingleValue(item.NARRATION);
       base.reference = getSingleValue(item.REFERENCE);
       base.referenceDate = getSingleValue(item.REFERENCEDATE);
       base.partyName = getSingleValue(item.PARTYNAME) || getSingleValue(item.PARTYLEDGERNAME);
       base.partyLedgerName = getSingleValue(item.PARTYLEDGERNAME);
-      base.buyerName = getSingleValue(item.BASICBUYERNAME);
+      base.partyMailingName = getSingleValue(item.PARTYMAILINGNAME);
       base.stateName = getSingleValue(item.STATENAME);
       base.countryOfResidence = getSingleValue(item.COUNTRYOFRESIDENCE);
       base.placeOfSupply = getSingleValue(item.PLACEOFSUPPLY);
       base.vchEntryMode = getSingleValue(item.VCHENTRYMODE);
       base.persistedView = getSingleValue(item.PERSISTEDVIEW);
-      if (item["ADDRESS.LIST"]) {
-        const addrList = asArray(item["ADDRESS.LIST"]?.ADDRESS || item["ADDRESS.LIST"]);
-        base.address = addrList.map((a: any) => String(getSingleValue(a)));
-      }
+      base.objView = getSingleValue(item["@_OBJVIEW"] || item.OBJVIEW);
+      base.viewType = getSingleValue(item.VOUCHERVIEWTYPE);
+      
+      // Addresses
+      base.address = extractAddressLines(item["ADDRESS.LIST"]);
       base.partyGSTIN = getSingleValue(item.PARTYGSTIN);
       base.partyGSTRegistrationType = getSingleValue(item.GSTREGISTRATIONTYPE);
+      base.partyPincode = getSingleValue(item.PARTYPINCODE || item.PINCODE);
       base.gstRegistration = getSingleValue(item.GSTREGISTRATION);
-      base.placeOfSupply = getSingleValue(item.PLACEOFSUPPLY);
-      base.consigneeName = getSingleValue(item.CONSIGNEENAME);
-      base.consigneeGSTIN = getSingleValue(item.CONSIGNEEGSTIN);
-      base.consigneeState = getSingleValue(item.CONSIGNEESTATENAME);
       base.voucherGSTClass = getSingleValue(item.VCHGSTCLASS);
+      base.companyGSTIN = getSingleValue(item.CMPGSTIN);
+      base.companyState = getSingleValue(item.CMPGSTSTATE);
+
+      // Buyer snapshot
+      base.buyerName = getSingleValue(item.BASICBUYERNAME || item.BUYERNAME);
+      base.buyerPinNumber = getSingleValue(item.BUYERPINNUMBER);
+      base.buyerState = getSingleValue(item.BUYERSTATENAME || item.STATENAME);
+      base.buyerCountry = getSingleValue(item.BUYERCOUNTRYNAME || item.COUNTRYOFRESIDENCE);
+      base.buyerGSTIN = getSingleValue(item.BUYERGSTIN || item.PARTYGSTIN);
+      base.buyerPAN = getSingleValue(item.BUYERPANNUMBER || item.PANNUMBER || item.INCOMETAXNUMBER);
+      if (!base.buyerPAN && base.buyerGSTIN && String(base.buyerGSTIN).length === 15) {
+        base.buyerPAN = String(base.buyerGSTIN).substring(2, 12);
+      }
+      base.buyerPlace = getSingleValue(item.BUYERPLACEOFSUPPLY || item.BILLTOPLACE);
+      base.buyerAddress = extractAddressLines(item["BASICBUYERADDRESS.LIST"]);
+
+      // Consignee snapshot
+      base.consigneeName = getSingleValue(item.CONSIGNEENAME || item.BASICSHIPPEDBYNAME);
+      base.consigneeMailingName = getSingleValue(item.CONSIGNEEMAILINGNAME);
+      base.consigneeCountry = getSingleValue(item.CONSIGNEECOUNTRYNAME);
+      base.consigneeState = getSingleValue(item.CONSIGNEESTATENAME);
+      base.consigneePinNumber = getSingleValue(item.CONSIGNEEPINNUMBER);
+      base.consigneePincode = getSingleValue(item.CONSIGNEEPINCODE);
+      base.consigneeGSTIN = getSingleValue(item.CONSIGNEEGSTIN);
+      base.consigneePlace = getSingleValue(item.SHIPTOPLACE);
+      base.consigneeAddress = extractAddressLines(item["BASICSHIPPEDBYADDRESS.LIST"]);
+
+      // Dispatch & Shipping
+      base.dispatchFromName = getSingleValue(item.DISPATCHFROMNAME);
+      base.dispatchFromState = getSingleValue(item.DISPATCHFROMSTATENAME);
+      base.dispatchFromPlace = getSingleValue(item.DISPATCHFROMPLACE);
+      base.dispatchFromPincode = getSingleValue(item.DISPATCHFROMPINCODE);
+      base.dispatchFromAddress = extractAddressLines(item["DISPATCHFROMADDRESS.LIST"]);
+      base.shipToPlace = getSingleValue(item.SHIPTOPLACE);
+      base.billToPlace = getSingleValue(item.BILLTOPLACE);
+      base.orderNo = getSingleValue(item.BASICPURCHASEORDERNO || item.ORDERNO);
+      base.orderDate = getSingleValue(item.BASICORDERDATE || item.ORDERDATE);
+      base.dispatchDocNo = getSingleValue(item.BASICSHIPDOCUMENTNO);
+      base.dispatchedThrough = getSingleValue(item.BASICSHIPPEDBY);
+      base.destination = getSingleValue(item.BASICFINALDESTINATION);
+      base.carrierName = getSingleValue(item.BASICCARRIERNAME);
+      base.billOfLadingNo = getSingleValue(item.BILLOFLADINGNO);
+      base.billOfLadingDate = getSingleValue(item.BILLOFLADINGDATE);
+      base.vehicleNo = getSingleValue(item.BASICVEHICLENO);
+      base.termsOfPayment = getSingleValue(item.BASICDUEDATEOFTMS);
+      base.deliveryNotes = getSingleValue(item.BASICORDERTERMS);
+
+      // IRN / E-Invoice
+      base.irn = getSingleValue(item.IRN);
+      base.irnAckNo = getSingleValue(item.IRNACKNO);
+      base.irnAckDate = getSingleValue(item.IRNACKDATE);
+      base.irnQrCode = getSingleValue(item.IRNQRCODE);
+      base.irnStatus = getSingleValue(item.IRNSTATUS);
+      base.irnCancelDate = getSingleValue(item.IRNCANCELDATE);
+      base.irnCancelReason = getSingleValue(item.IRNCANCELREASON);
+
+      // Flags & Totals
       base.isInvoice = parseTallyBoolean(item.ISINVOICE);
       base.isOptional = parseTallyBoolean(item.ISOPTIONAL);
-      base.effectiveDate = getSingleValue(item.EFFECTIVEDATE);
-      base.viewType = getSingleValue(item.VOUCHERVIEWTYPE);
+      base.isDeleted = parseTallyBoolean(item.ISDELETED);
+      base.isDeemedPositive = parseTallyBoolean(item.ISDEEMEDPOSITIVE);
+      base.asOriginal = parseTallyBoolean(item.ASORIGINAL);
+      base.asPayslip = parseTallyBoolean(item.ASPAYSLIP);
+      base.isDeletedVchRetained = parseTallyBoolean(item.ISDELETEDVCHRETAINED);
+      base.amount = parseTallyNumeric(item.AMOUNT);
+      base.roundOffAmount = parseTallyNumeric(item.ROUNDOFFAMOUNT);
+      base.totalTaxAmount = parseTallyNumeric(item.TOTALTAXAMOUNT);
+      base.netAmount = parseTallyNumeric(item.NETAMOUNT);
 
+      // E-Way Bill
       if (item["EWAYBILLDETAILS.LIST"]) {
         const eway = asArray(item["EWAYBILLDETAILS.LIST"])[0] as any;
         base.ewayBillDetails = {
@@ -715,24 +833,65 @@ export function parseExportCollection<T>(
         };
       }
 
-      // Parse Ledger Entries
+      // Parse Ledger Entries (ALLLEDGERENTRIES or LEDGERENTRIES)
       const ledgerEntriesNode = item["ALLLEDGERENTRIES.LIST"] || item["LEDGERENTRIES.LIST"];
       if (ledgerEntriesNode) {
         const rawEntries = asArray(ledgerEntriesNode);
-        
         base.ledgerEntries = rawEntries.map((e: any) => ({
           ledgerName: String(getSingleValue(e.LEDGERNAME)),
           amount: parseTallyNumeric(e.AMOUNT) ?? 0,
           isDeemedPositive: parseTallyBoolean(e.ISDEEMEDPOSITIVE) ?? false,
           isPartyLedger: parseTallyBoolean(e.ISPARTYLEDGER),
+          isDutyLedger: parseTallyBoolean(e.STRDGSTISDUTYLEDGER),
+          isSystem: parseTallyBoolean(e.ISSYSTEM),
+          isLastDeemedPositive: parseTallyBoolean(e.ISLASTDEEMEDPOSITIVE),
+          narration: getSingleValue(e.NARRATION),
           methodType: getSingleValue(e.METHODTYPE),
           roundType: getSingleValue(e.ROUNDTYPE),
-          billAllocations: e["BILLALLOCATIONS.LIST"] ? asArray(e["BILLALLOCATIONS.LIST"]).map((b: any) => ({
-            name: String(getSingleValue(b.NAME) || ""),
-            billType: getSingleValue(b.BILLTYPE),
-            amount: parseTallyNumeric(b.AMOUNT) ?? 0,
-            dueDate: getSingleValue(b.BILLCREDITPERIOD),
-          })) : undefined,
+          roundLimit: parseTallyNumeric(e.ROUNDLIMIT),
+          gstDutyHead: getSingleValue(e.GSTDUTYHEAD),
+          taxClassificationName: getSingleValue(e.TAXCLASSIFICATIONNAME),
+          statClassificationName: getSingleValue(e.STATCLASSIFICATIONNAME),
+          rateOfTax: parseTallyNumeric(e.RATEOFADDLVAT || e.VATTAXRATE),
+          gstTaxRate: parseTallyNumeric(e.GSTTAXRATE),
+          gstAssessableValue: parseTallyNumeric(e.GSTASSBLVALUE ?? e.GSTASSESSABLEVALUE),
+          igstLiability: parseTallyNumeric(e.IGSTLIABILITY),
+          cgstLiability: parseTallyNumeric(e.CGSTLIABILITY),
+          sgstLiability: parseTallyNumeric(e.SGSTLIABILITY),
+          gstCessLiability: parseTallyNumeric(e.GSTCESSLIABILITY),
+          computedAssessableValue: parseTallyNumeric(e.STRDCOMPUTEDASSESSABLEVALUE),
+          computedIgst: parseTallyNumeric(e.STRDCOMPUTEDIGST),
+          computedCgst: parseTallyNumeric(e.STRDCOMPUTEDCGST),
+          computedSgst: parseTallyNumeric(e.STRDCOMPUTEDSGST),
+          computedCess: parseTallyNumeric(e.STRDCOMPUTEDCESS),
+          _raw: e,
+          billAllocations: e["BILLALLOCATIONS.LIST"] ? asArray(e["BILLALLOCATIONS.LIST"])
+            .filter((b: any) => b && (b.NAME || b.BILLTYPE || b.AMOUNT !== undefined))
+            .map((b: any) => ({
+              name: String(getSingleValue(b.NAME) || ""),
+              billType: getSingleValue(b.BILLTYPE),
+              amount: parseTallyNumeric(b.AMOUNT) ?? 0,
+              dueDate: getSingleValue(b.BILLCREDITPERIOD),
+              billDate: getSingleValue(b.BILLDATE),
+              billCreationDate: getSingleValue(b.BILLCREATIONDATE),
+              billId: parseTallyNumeric(b.BILLID),
+              _raw: b,
+            })) : undefined,
+          bankAllocations: e["BANKALLOCATIONS.LIST"] ? asArray(e["BANKALLOCATIONS.LIST"])
+            .filter((bk: any) => bk && (bk.BANKNAME || bk.ACCOUNTNUMBER || bk.AMOUNT !== undefined))
+            .map((bk: any) => ({
+              transactionType: getSingleValue(bk.TRANSACTIONTYPE),
+              paymentMode: getSingleValue(bk.PAYMENTMODE),
+              instrumentNumber: getSingleValue(bk.INSTRUMENTNUMBER),
+              instrumentDate: getSingleValue(bk.INSTRUMENTDATE),
+              chequeCrossComment: getSingleValue(bk.CHEQUECROSSCOMMENT),
+              bankName: getSingleValue(bk.BANKNAME),
+              accountNumber: getSingleValue(bk.ACCOUNTNUMBER),
+              ifsCode: getSingleValue(bk.IFSCODE),
+              paymentFavouring: getSingleValue(bk.PAYMENTFAVOURING),
+              payeeName: getSingleValue(bk.PAYEENAME),
+              amount: parseTallyNumeric(bk.AMOUNT),
+            })) : undefined,
           costCentreAllocations: e["CATEGORYALLOCATIONS.LIST"] ? asArray(e["CATEGORYALLOCATIONS.LIST"]).flatMap((cat: any) => {
             const category = getSingleValue(cat.CATEGORY);
             return asArray(cat["COSTCENTREALLOCATIONS.LIST"]).map((cc: any) => ({
@@ -744,38 +903,103 @@ export function parseExportCollection<T>(
         }));
       }
 
-      // Parse Inventory Entries
+      // If voucher amount was omitted in header, compute from party ledger
+      if (base.amount === undefined && base.ledgerEntries) {
+        const partyLed = base.ledgerEntries.find((l: any) => l.isPartyLedger);
+        if (partyLed) {
+          base.amount = Math.abs(Number(partyLed.amount));
+        }
+      }
+
+      // Parse Inventory Entries (ALLINVENTORYENTRIES or INVENTORYENTRIES)
       const inventoryEntriesNode = item["ALLINVENTORYENTRIES.LIST"] || item["INVENTORYENTRIES.LIST"];
       if (inventoryEntriesNode) {
         const rawInv = asArray(inventoryEntriesNode);
         
         base.inventoryAllocations = rawInv.map((inv: any) => ({
           stockItemName: String(getSingleValue(inv.STOCKITEMNAME)),
+          description: getSingleValue(inv.DESCRIPTION),
           quantity: getSingleValue(inv.ACTUALQTY ?? inv.BILLEDQTY ?? inv.ACTUALQUANTITY ?? inv.BILLEDQUANTITY),
           actualQuantity: getSingleValue(inv.ACTUALQTY ?? inv.ACTUALQUANTITY),
           billedQuantity: getSingleValue(inv.BILLEDQTY ?? inv.BILLEDQUANTITY),
+          unit: String(getSingleValue(inv.ACTUALQTY || inv.BILLEDQTY || "")).trim().split(/\s+/).pop() || undefined,
           rate: getSingleValue(inv.RATE),
           amount: parseTallyNumeric(inv.AMOUNT) ?? 0,
           isDeemedPositive: parseTallyBoolean(inv.ISDEEMEDPOSITIVE) ?? false,
+          discount: parseTallyNumeric(inv.DISCOUNT),
+          discountAmount: parseTallyNumeric(inv.DISCOUNTAMOUNT),
+          addlAmount: parseTallyNumeric(inv.ADDLAMOUNT),
+          addlCostPerc: parseTallyNumeric(inv.ADDLCOSTPERC),
+          hsnCode: getSingleValue(inv.GSTHSNNAME),
+          hsnDescription: getSingleValue(inv.GSTHSNDESCRIPTION),
+          hsnSourceType: getSingleValue(inv.HSNSOURCETYPE),
+          hsnItemSource: getSingleValue(inv.HSNITEMSOURCE),
+          gstSourceType: getSingleValue(inv.GSTSOURCETYPE),
+          gstItemSource: getSingleValue(inv.GSTITEMSOURCE),
+          rateInferApplicability: getSingleValue(inv.GSTRATEINFERAPPLICABILITY),
+          hsnInferApplicability: getSingleValue(inv.GSTHSNINFERAPPLICABILITY),
+          taxability: getSingleValue(inv.GSTOVRDNTAXABILITY),
+          typeOfSupply: getSingleValue(inv.GSTOVRDNTYPEOFSUPPLY),
+          gstOverrideStoredNature: getSingleValue(inv.GSTOVRDNSTOREDNATURE),
+          isReverseChargeApplicable: parseTallyBoolean(inv.GSTOVRDNISREVCHARGEAPPL),
+          computedAssessableValue: parseTallyNumeric(inv.STRDCOMPUTEDASSESSABLEVALUE),
+          computedCgst: parseTallyNumeric(inv.STRDCOMPUTEDCGST),
+          computedSgst: parseTallyNumeric(inv.STRDCOMPUTEDSGST),
+          computedIgst: parseTallyNumeric(inv.STRDCOMPUTEDIGST),
+          computedCess: parseTallyNumeric(inv.STRDCOMPUTEDCESS),
+          computedCessOnQty: parseTallyNumeric(inv.STRDCOMPUTEDCESSONQTY),
+          gstAssessableValue: parseTallyNumeric(inv.GSTASSBLVALUE ?? inv.GSTASSESSABLEVALUE),
+          mrpRate: parseTallyNumeric(inv.MRPRATE),
+          mrpAssessableValue: parseTallyNumeric(inv.STRDMRPASSESSABLEVALUE),
+          mrpComputedCgst: parseTallyNumeric(inv.STRDMRPCOMPUTEDCGST),
+          mrpComputedSgst: parseTallyNumeric(inv.STRDMRPCOMPUTEDSGST),
+          mrpComputedIgst: parseTallyNumeric(inv.STRDMRPCOMPUTEDIGST),
+          mrpComputedCess: parseTallyNumeric(inv.STRDMRPCOMPUTEDCESS),
+          isScrap: parseTallyBoolean(inv.ISSCRAP),
+          isPrimaryItem: parseTallyBoolean(inv.ISPRIMARYITEM),
+          isCustomsClearance: parseTallyBoolean(inv.ISCUSTOMSCLEARANCE),
+          isTrackComponent: parseTallyBoolean(inv.ISTRACKCOMPONENT),
+          isTrackProduction: parseTallyBoolean(inv.ISTRACKPRODUCTION),
+          isAutoNegate: parseTallyBoolean(inv.ISAUTONEGATE),
+          _raw: inv,
           accountingAllocations: inv["ACCOUNTINGALLOCATIONS.LIST"] ? asArray(inv["ACCOUNTINGALLOCATIONS.LIST"]).map((a: any) => ({
             ledgerName: String(getSingleValue(a.LEDGERNAME) || ""),
             amount: parseTallyNumeric(a.AMOUNT) ?? 0,
             isDeemedPositive: parseTallyBoolean(a.ISDEEMEDPOSITIVE),
+            isPartyLedger: parseTallyBoolean(a.ISPARTYLEDGER),
+            gstDutyHead: getSingleValue(a.GSTDUTYHEAD),
+            roundType: getSingleValue(a.ROUNDTYPE),
+            methodType: getSingleValue(a.METHODTYPE),
+            taxClassificationName: getSingleValue(a.TAXCLASSIFICATIONNAME),
+            isGstAssessableValueOverridden: parseTallyBoolean(a.ISGSTASSESSABLEVALUEOVERRIDDEN),
+            strdIsGstApplicable: parseTallyBoolean(a.STRDISGSTAPPLICABLE),
           })) : undefined,
           batchAllocations: inv["BATCHALLOCATIONS.LIST"] ? asArray(inv["BATCHALLOCATIONS.LIST"]).map((b: any) => ({
             godownName: String(getSingleValue(b.GODOWNNAME) || ""),
             batchName: getSingleValue(b.BATCHNAME),
+            batchId: parseTallyNumeric(b.BATCHID),
             orderNo: getSingleValue(b.ORDERNO),
             trackingNumber: getSingleValue(b.TRACKINGNUMBER),
+            indentNo: getSingleValue(b.INDENTNO),
             actualQuantity: getSingleValue(b.ACTUALQTY ?? b.ACTUALQUANTITY),
             billedQuantity: getSingleValue(b.BILLEDQTY ?? b.BILLEDQUANTITY),
             rate: getSingleValue(b.RATE),
+            batchRate: getSingleValue(b.BATCHRATE),
             amount: b.AMOUNT ? parseTallyNumeric(b.AMOUNT) : undefined,
+            expiryPeriod: getSingleValue(b.EXPIRYPERIOD),
+            mfgDate: getSingleValue(b.MFDON),
+            discount: parseTallyNumeric(b.BATCHDISCOUNT),
+            discountAmount: parseTallyNumeric(b.BATCHDISCOUNTAMOUNT),
+            destinationGodownName: getSingleValue(b.DESTINATIONGODOWNNAME),
+            orderClosureReason: getSingleValue(b.ORDERCLOSUREREASON),
+            orderDueDate: getSingleValue(b.ORDERDUEDATE),
+            _raw: b,
           })) : undefined,
-          gstRateDetails: inv["GSTRATEDETAILS.LIST"] ? asArray(inv["GSTRATEDETAILS.LIST"]).map((g: any) => ({
+          gstRateDetails: (inv["RATEDETAILS.LIST"] || inv["GSTRATEDETAILS.LIST"]) ? asArray(inv["RATEDETAILS.LIST"] || inv["GSTRATEDETAILS.LIST"]).map((g: any) => ({
             dutyHead: getSingleValue(g.GSTRATEDUTYHEAD),
             valuationType: getSingleValue(g.GSTRATEVALUATIONTYPE),
             rate: parseTallyNumeric(g.GSTRATE),
+            ratePerUnit: parseTallyNumeric(g.GSTRATEPERUNIT),
           })) : undefined,
         }));
         base.allInventoryEntries = base.inventoryAllocations;
@@ -888,6 +1112,35 @@ export function parseExportCollection<T>(
       base.openingBalance = item.OPENINGBALANCE ? parseTallyNumeric(item.OPENINGBALANCE) : undefined;
       base.openingRate = item.OPENINGRATE ? parseTallyNumeric(item.OPENINGRATE) : undefined;
       base.openingValue = item.OPENINGVALUE ? parseTallyNumeric(item.OPENINGVALUE) : undefined;
+      base.closingBalance = item.CLOSINGBALANCE ? parseTallyNumeric(item.CLOSINGBALANCE) : undefined;
+      base.closingRate = item.CLOSINGRATE ? parseTallyNumeric(item.CLOSINGRATE) : undefined;
+      base.closingValue = item.CLOSINGVALUE ? parseTallyNumeric(item.CLOSINGVALUE) : undefined;
+      base.standardCost = item.STANDARDCOST ? parseTallyNumeric(item.STANDARDCOST) : undefined;
+      base.standardPrice = item.STANDARDPRICE ? parseTallyNumeric(item.STANDARDPRICE) : undefined;
+      base.mrpRate = item.MRPRATE ? parseTallyNumeric(item.MRPRATE) : undefined;
+      base.reorderLevel = item.REORDERLEVEL ? parseTallyNumeric(item.REORDERLEVEL) : undefined;
+      base.minimumOrderQty = item.MINIMUMORDERQTY ? parseTallyNumeric(item.MINIMUMORDERQTY) : undefined;
+      base.taxability = getSingleValue(item.TAXABILITY);
+      base.integratedTaxRate = parseTallyNumeric(item.INTEGRATEDTAXRATE || item.IGSTRATE);
+      base.centralTaxRate = parseTallyNumeric(item.CENTRALTAXRATE || item.CGSTRATE);
+      base.stateTaxRate = parseTallyNumeric(item.STATETAXRATE || item.SGSTRATE);
+      base.cessRate = parseTallyNumeric(item.CESSRATE);
+      base.hsnCode = getSingleValue(item.GSTHSNNAME);
+      base.hsnDescription = getSingleValue(item.GSTHSNDESCRIPTION);
+      if (item["HSNDETAILS.LIST"]) {
+        const hsnList = asArray(item["HSNDETAILS.LIST"]);
+        base.hsnDetails = hsnList.map((hsn: any) => ({
+          applicableFrom: getSingleValue(hsn.APPLICABLEFROM),
+          hsnDescription: getSingleValue(hsn.HSN),
+          hsnCode: getSingleValue(hsn.HSNCODE),
+          hsnClassificationName: getSingleValue(hsn.HSNCLASSIFICATIONNAME),
+          source: getSingleValue(hsn.SRCOFHSNDETAILS),
+        }));
+        if (hsnList[0]) {
+          base.hsnCode = base.hsnCode || getSingleValue(hsnList[0].HSNCODE);
+          base.hsnDescription = base.hsnDescription || getSingleValue(hsnList[0].HSN);
+        }
+      }
 
       // language name list / alias
       const langData = parseLanguageNameList(item);
