@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "author": "GreenHacker",
   "repository": {
@@ -45,8 +46,10 @@
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
   },
-  "files": [
-    "dist",
-    "README.md"
-  ]
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  }
 }
