@@ -85,7 +85,10 @@ export interface Ledger extends BaseAliasedMasterObject {
   appropriateFor?: string;
   panNumber?: string;
   countryOfResidence?: string;
+  pinCode?: string;
+  pincode?: string;
   oldPinCode?: string;
+  address?: string;
   phone?: string;
   mobile?: string;
   contact?: string;

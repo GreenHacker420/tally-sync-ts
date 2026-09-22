@@ -70,7 +70,10 @@ export interface PaginatedResponse<T> {
 }
 
 export interface TallyClientOptions {
+  host?: string;
+  port?: number;
   url?: string;
+  baseURL?: string;
   timeout?: number;
   company?: string;
   transport?: TallyTransport;
@@ -87,17 +90,23 @@ export class TallyClient {
     transport?: TallyTransport
   ) {
     if (typeof urlOrOptions === "object" && urlOrOptions !== null) {
+      const rawHost = urlOrOptions.host || urlOrOptions.baseURL || urlOrOptions.url || "http://localhost";
+      const normalizedHost = rawHost.startsWith("http://") || rawHost.startsWith("https://") ? rawHost : ("http://" + rawHost);
+      const resolvedPort = urlOrOptions.port !== undefined ? urlOrOptions.port : (port || 9000);
+      const timeoutMs = urlOrOptions.timeout || 30000;
+
       this.transport = urlOrOptions.transport || new FetchTallyTransport({
-        baseURL: urlOrOptions.url || "http://localhost",
-        port: 9000,
-        timeoutMinutes: (urlOrOptions.timeout || 30000) / 60000,
+        baseURL: normalizedHost,
+        port: resolvedPort,
+        timeoutMinutes: timeoutMs / 60000,
       });
       this.defaultCompany = urlOrOptions.company;
     } else {
-      const url = urlOrOptions || "http://localhost";
+      const rawUrl = urlOrOptions || "http://localhost";
+      const normalizedUrl = rawUrl.startsWith("http://") || rawUrl.startsWith("https://") ? rawUrl : ("http://" + rawUrl);
       const p = port || 9000;
       const timeout = timeoutMinutes || 3;
-      this.transport = transport || new FetchTallyTransport({ baseURL: url, port: p, timeoutMinutes: timeout });
+      this.transport = transport || new FetchTallyTransport({ baseURL: normalizedUrl, port: p, timeoutMinutes: timeout });
     }
   }
 
@@ -208,6 +217,18 @@ export class TallyClient {
     return this.getObjects("Voucher", options);
   }
 
+  public async postVouchers(vouchers: readonly Voucher[], options?: PostRequestOptions): Promise<PostResponse[]> {
+    return this.postObjects("Voucher", vouchers, options);
+  }
+
+  public async postLedgers(ledgers: readonly Ledger[], options?: PostRequestOptions): Promise<PostResponse[]> {
+    return this.postObjects("Ledger", ledgers, options);
+  }
+
+  public async postStockItems(items: readonly StockItem[], options?: PostRequestOptions): Promise<PostResponse[]> {
+    return this.postObjects("StockItem", items, options);
+  }
+
   public async getActiveCompany(): Promise<string> {
     const xml = `<ENVELOPE>
   <HEADER>
@@ -219,7 +240,7 @@ export class TallyClient {
 </ENVELOPE>`;
     const resp = await this.sendRequest(xml, "Get Active Company");
     const parsed = parseRawXml(resp);
-    const body = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+    const body = parsed?.ENVELOPE?.BODY?.DATA as unknown as string;
     return String(body || "").trim();
   }
 
@@ -278,7 +299,7 @@ export class TallyClient {
 </ENVELOPE>`;
     const resp = await this.sendRequest(xml, "Get License Info");
     const parsed = parseRawXml(resp);
-    const data = (parsed as any)?.ENVELOPE?.BODY?.DATA?.LicenseInfoReport?.LICENSEINFOREPORT?.LicenseInfoPart?.LICENSEINFOPART?.LicenseInfoLine || {};
+    const data = parsed?.ENVELOPE?.BODY?.DATA?.LicenseInfoReport?.LICENSEINFOREPORT?.LicenseInfoPart?.LICENSEINFOPART?.LicenseInfoLine || {};
     const r = new (await import("./xml/reader.js")).TallyReader(data);
 
     return {

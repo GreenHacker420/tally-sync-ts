@@ -22,6 +22,7 @@ export * from "./schema/masters/ledgerCodec.js";
 export * from "./schema/masters/stockItemCodec.js";
 export * from "./schema/masters/companyCodec.js";
 export * from "./schema/masters/otherCodecs.js";
+export * from "./schema/zod.js";
 
 // TDL
 export * from "./tdl/profiles.js";

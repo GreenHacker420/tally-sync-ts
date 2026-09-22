@@ -14,18 +14,24 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       "NAME", "PARENT", "OPENINGBALANCE", "CLOSINGBALANCE", "CURRENCYNAME",
       "TAXTYPE", "GSTTAXTYPE", "GSTAPPLICABLE", "GSTTYPE", "GSTTYPEOFSUPPLY",
       "RATEOFTAX", "APPROPRIATEFOR", "INCOMETAXNUMBER", "PANNUMBER", "COUNTRYOFRESIDENCE",
-      "OLDPINCODE", "PHONENUMBER", "MOBILENUMBER", "CONTACTPERSON", "FAXNUMBER",
+      "OLDPINCODE", "PINCODE", "PHONENUMBER", "MOBILENUMBER", "CONTACTPERSON", "FAXNUMBER",
       "COUNTRYISDCODE", "EMAIL", "EMAILCC", "WEBSITE", "BANKACCOUNTHOLDERNAME",
       "ISBILLWISEON", "ISCOSTCENTRESON", "ISINTERESTON", "ISCOSTTRACKINGON", "AFFECTSSTOCK",
       "ISTCSAPPLICABLE", "ISTDSAPPLICABLE", "ISGSTAPPLICABLE", "CONSIDERPURCHASEFOREXPORT",
       "ISTRANSPORTER", "ISCHEQUEPRINTINGENABLED", "ISEBANKINGENABLED", "SORTPOSITION",
       "PARTYGSTIN", "STATENAME", "COUNTRYNAME", "PLACEOFSUPPLY", "GSTREGISTRATIONTYPE",
-      "CREDITLIMIT", "BILLCREDITPERIOD"
+      "CREDITLIMIT", "BILLCREDITPERIOD", "ADDRESS.LIST", "LEDMAILINGDETAILS.LIST",
+      "LEDGSTREGDETAILS.LIST", "CONTACTDETAILS.LIST"
     ]);
 
     const mailingDetails = r.list("LEDMAILINGDETAILS.LIST").map(m => {
       const mr = new TallyReader(m);
-      const addrList = asArray((m["ADDRESS.LIST"] as any)?.ADDRESS ?? m["ADDRESS"]).map(tallyText).filter((x): x is string => !!x);
+      const rawAddr = asArray(m["ADDRESS.LIST"]);
+      const addrList = rawAddr
+        .flatMap((a: any) => asArray(a?.ADDRESS ?? a))
+        .concat(asArray(m["ADDRESS"]))
+        .map(tallyText)
+        .filter((x): x is string => !!x);
       return {
         applicableFrom: mr.text("APPLICABLEFROM"),
         mailingName: mr.text("MAILINGNAME"),
@@ -40,11 +46,20 @@ export const ledgerCodec: TallyCodec<Ledger> = {
     const gstRegNode = r.list("LEDGSTREGDETAILS.LIST")[0];
     const gstRegR = gstRegNode ? new TallyReader(gstRegNode) : undefined;
 
-    let gstin = r.text("PARTYGSTIN") ?? gstRegR?.text("GSTIN");
-    let stateName = r.text("STATENAME") ?? mailNode?.state;
-    let country = r.text("COUNTRYNAME") ?? mailNode?.country;
-    let regType = r.text("GSTREGISTRATIONTYPE") ?? gstRegR?.text("GSTREGISTRATIONTYPE");
-    let placeOfSupply = r.text("PLACEOFSUPPLY") ?? gstRegR?.text("PLACEOFSUPPLY");
+    const rawTopAddr = asArray(node["ADDRESS.LIST"]);
+    const topAddress = rawTopAddr
+      .flatMap((a: any) => asArray(a?.ADDRESS ?? a))
+      .concat(asArray(node["ADDRESS"]))
+      .map(tallyText)
+      .filter((x): x is string => !!x);
+    const addressLines = topAddress.length ? topAddress : (mailNode?.address ?? []);
+
+    const gstin = r.text("PARTYGSTIN") ?? gstRegR?.text("GSTIN");
+    const stateName = r.text("STATENAME") ?? mailNode?.state;
+    const country = r.text("COUNTRYNAME") ?? mailNode?.country;
+    const regType = r.text("GSTREGISTRATIONTYPE") ?? gstRegR?.text("GSTREGISTRATIONTYPE");
+    const placeOfSupply = r.text("PLACEOFSUPPLY") ?? gstRegR?.text("PLACEOFSUPPLY");
+    const pinCode = r.text("PINCODE") ?? r.text("OLDPINCODE") ?? mailNode?.pinCode;
 
     return {
       name: r.attr("NAME") ?? r.text("NAME") ?? "",
@@ -52,8 +67,21 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       parent: r.text("PARENT"),
       masterId: r.number("MASTERID"),
       alterId: r.number("ALTERID"),
-      openingBalance: r.number("OPENINGBALANCE") ?? r.amount("OPENINGBALANCE")?.value,
-      closingBalance: r.number("CLOSINGBALANCE") ?? r.amount("CLOSINGBALANCE")?.value,
+      gstin: gstin,
+      partyGstin: gstin,
+      state: stateName,
+      stateName: stateName,
+      country: country,
+      countryOfResidence: country,
+      placeOfSupply: placeOfSupply,
+      gstRegistrationType: regType,
+      pinCode: pinCode,
+      pincode: pinCode,
+      oldPinCode: pinCode,
+      addressLines: addressLines.length ? addressLines : undefined,
+      address: addressLines.length ? addressLines.join(", ") : undefined,
+      openingBalance: r.amountVal("OPENINGBALANCE") ?? r.number("OPENINGBALANCE") ?? 0,
+      closingBalance: r.amountVal("CLOSINGBALANCE") ?? r.number("CLOSINGBALANCE") ?? 0,
       currency: r.text("CURRENCYNAME"),
       currencyName: r.text("CURRENCYNAME"),
       taxType: r.text("TAXTYPE"),
@@ -63,7 +91,6 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       rateOfTax: r.number("RATEOFTAX"),
       appropriateFor: r.text("APPROPRIATEFOR"),
       panNumber: r.text("INCOMETAXNUMBER") ?? r.text("PANNUMBER"),
-      countryOfResidence: country,
       phone: r.text("PHONENUMBER"),
       mobile: r.text("MOBILENUMBER"),
       contact: r.text("CONTACTPERSON"),
@@ -84,13 +111,6 @@ export const ledgerCodec: TallyCodec<Ledger> = {
       isTransporter: r.boolean("ISTRANSPORTER"),
       isChequePrintingEnabled: r.boolean("ISCHEQUEPRINTINGENABLED"),
       isEBankingEnabled: r.boolean("ISEBANKINGENABLED"),
-      gstin,
-      partyGstin: gstin,
-      stateName,
-      state: stateName,
-      country,
-      placeOfSupply,
-      gstRegistrationType: regType,
       creditLimit: r.text("CREDITLIMIT"),
       creditPeriod: r.text("BILLCREDITPERIOD"),
       unknown: r.collectUnknown(known),
@@ -98,30 +118,45 @@ export const ledgerCodec: TallyCodec<Ledger> = {
     };
   },
 
-  build(led: Ledger, options: any = {}): XmlElement {
-    const action = options.action || led.action || "Create";
+  build(item: Ledger, options: any = {}): XmlElement {
+    const action = options.action || item.action || "Create";
     const attrs: Record<string, string> = {
-      NAME: led.name,
+      NAME: item.name,
       ACTION: action,
     };
 
     const children: Array<XmlElement | string> = [];
     const add = (c?: XmlElement) => { if (c) children.push(c); };
 
-    add(el("NAME", led.name));
-    add(el("PARENT", led.group || led.parent));
-    add(boolElement("ISBILLWISEON", led.isBillWise ?? led.isBillWiseOn));
-    add(boolElement("ISCOSTCENTRESON", led.isCostCentresOn));
-    add(boolElement("ISINTERESTON", led.isInterestOn));
-    add(amountElement("OPENINGBALANCE", led.openingBalance));
+    add(el("NAME", item.name));
+    add(el("PARENT", item.group || item.parent));
+    add(amountElement("OPENINGBALANCE", item.openingBalance));
+    if (item.currency || item.currencyName) add(el("CURRENCYNAME", item.currency || item.currencyName));
+    if (item.taxType) add(el("TAXTYPE", item.taxType));
+    if (item.gstTaxType) add(el("GSTTAXTYPE", item.gstTaxType));
+    if (item.rateOfTax !== undefined) add(el("RATEOFTAX", item.rateOfTax));
+    if (item.panNumber) add(el("INCOMETAXNUMBER", item.panNumber));
+    if (item.phone) add(el("LEDGERPHONE", item.phone));
+    if (item.mobile) add(el("LEDGERMOBILE", item.mobile));
+    if (item.contact) add(el("LEDGERCONTACT", item.contact));
+    if (item.fax) add(el("LEDGERFAX", item.fax));
+    if (item.email) add(el("EMAIL", item.email));
+    if (item.emailCc) add(el("EMAILCC", item.emailCc));
+    if (item.website) add(el("WEBSITE", item.website));
+    if (item.creditLimit) add(el("CREDITLIMIT", item.creditLimit));
+    if (item.partyGstin || item.gstin) add(el("PARTYGSTIN", item.partyGstin || item.gstin));
 
-    const gstin = led.gstin || led.partyGstin;
-    if (gstin) add(el("PARTYGSTIN", gstin));
-    const state = led.stateName || led.state;
-    if (state) add(el("STATENAME", state));
-    if (led.country) add(el("COUNTRYNAME", led.country));
-    if (led.gstRegistrationType) add(el("GSTREGISTRATIONTYPE", led.gstRegistrationType));
-    if (led.panNumber) add(el("INCOMETAXNUMBER", led.panNumber));
+    add(boolElement("ISBILLWISEON", item.isBillWiseOn ?? item.isBillWise));
+    add(boolElement("ISCOSTCENTRESON", item.isCostCentresOn));
+    add(boolElement("ISINTERESTON", item.isInterestOn));
+    add(boolElement("ISCOSTTRACKINGON", item.isCostTrackingOn));
+    add(boolElement("AFFECTSSTOCK", item.affectsStock));
+    add(boolElement("ISTCSAPPLICABLE", item.isTcsApplicable));
+    add(boolElement("ISTDSAPPLICABLE", item.isTdsApplicable));
+    add(boolElement("ISGSTAPPLICABLE", item.isGstApplicable));
+    add(boolElement("ISTRANSPORTER", item.isTransporter));
+    add(boolElement("ISCHEQUEPRINTINGENABLED", item.isChequePrintingEnabled));
+    add(boolElement("ISEBANKINGENABLED", item.isEBankingEnabled));
 
     return {
       name: "LEDGER",

@@ -1,4 +1,29 @@
+export interface LicenseInfo {
+  serialNumber: string;
+  remoteSerialNumber: string;
+  accountId: string;
+  adminMailId: string;
+  isAdmin: boolean;
+  isEducationalMode: boolean;
+  isSilver: boolean;
+  isGold: boolean;
+  planName: string;
+  isIndian: boolean;
+  isRemoteAccessMode: boolean;
+  isLicClientMode: boolean;
+  applicationPath: string;
+  dataPath: string;
+  userLevel: string;
+  userName: string;
+  tallyVersion: string;
+  tallyShortVersion: string;
+  isTallyPrime: boolean;
+  isTallyPrimeEditLog: boolean;
+  isTallyPrimeServer: boolean;
+}
+
 import { parseRawXml, cleanResponseXml } from "./xml/parser.js";
+import { TallyXmlRoot, TallyXmlEnvelope, TallyXmlData, TallyXmlResultItem } from "./xml/types.js";
 import { asArray, TallyReader } from "./xml/reader.js";
 import { tallyText, tallyNumber, tallyBoolean } from "./xml/values.js";
 import { TallyObjectType, TallyObjectMap, TALLY_OBJECTS } from "./schema/registry.js";
@@ -66,14 +91,32 @@ export interface PostResponse {
   error?: string;
 }
 
+import {
+  tallyNumericSchema,
+  tallyNumericCodec,
+  tallyBooleanSchema,
+  tallyBooleanCodec,
+  tallyLogicalSchema,
+  tallyTextSchema,
+  tallyQuantitySchema,
+  tallyRateSchema,
+  tallyDateSchema,
+} from "./schema/zod.js";
+
+export {
+  tallyNumericSchema,
+  tallyNumericCodec,
+  tallyBooleanSchema,
+  tallyBooleanCodec,
+  tallyLogicalSchema,
+  tallyTextSchema,
+  tallyQuantitySchema,
+  tallyRateSchema,
+  tallyDateSchema,
+};
+
 export function parseTallyNumeric(val: any): number {
-  if (val === undefined || val === null || val === "") return 0;
-  if (typeof val === "number") return val;
-  const str = String(val).trim();
-  const isCr = /Cr$/i.test(str);
-  const cleanStr = str.replace(/[^0-9.-]/g, "");
-  const num = parseFloat(cleanStr) || 0;
-  return isCr ? -num : num;
+  return tallyNumericSchema.parse(val);
 }
 
 export const parseTallyBoolean = tallyBoolean;
@@ -97,12 +140,12 @@ export function checkTallyError(xml: string): string | null {
   return null;
 }
 
-export function parseExportCollection<T = any>(xml: string, objectType: TallyObjectType | string): T[] {
+export function parseExportCollection<T = unknown>(xml: string, objectType: TallyObjectType | string): T[] {
   const parsed = parseRawXml(xml);
-  const envelope = parsed?.ENVELOPE as any;
-  const data = envelope?.BODY?.DATA ?? envelope?.DATA ?? parsed;
+  const envelope = parsed.ENVELOPE;
+  const data = (envelope?.BODY?.DATA ?? envelope?.DATA ?? parsed) as Record<string, unknown>;
 
-  const collection = data?.COLLECTION ?? data;
+  const collection = (data?.COLLECTION ?? data) as Record<string, unknown>;
   if (!collection) return [];
 
   const codec = tallyCodecs[objectType as TallyObjectType];
@@ -157,8 +200,8 @@ export function parseExportCollection<T = any>(xml: string, objectType: TallyObj
 
 export function parseCountResponse(xml: string): number {
   const parsed = parseRawXml(xml);
-  const envelope = parsed?.ENVELOPE as any;
-  const data = envelope?.BODY?.DATA ?? envelope;
+  const envelope = parsed.ENVELOPE;
+  const data = (envelope?.BODY?.DATA ?? envelope) as Record<string, unknown>;
 
   const r = new TallyReader(data);
   return r.number("TC_TOTALCOUNT") ?? r.number("TOTALCOUNT") ?? 0;
@@ -166,7 +209,7 @@ export function parseCountResponse(xml: string): number {
 
 export function parseMasterStatistics(xml: string): MasterStatistics[] {
   const parsed = parseRawXml(xml);
-  const envelope = parsed?.ENVELOPE as any;
+  const envelope = parsed.ENVELOPE;
   const data = envelope?.BODY?.DATA ?? envelope;
 
   const list = asArray(data?.TC_MASTERSTATISTICSREPORT ?? data?.TC_MasterStatisticsReport ?? data?.MasterStatistics);
@@ -181,7 +224,7 @@ export function parseMasterStatistics(xml: string): MasterStatistics[] {
 
 export function parseVoucherStatistics(xml: string): VoucherStatistics[] {
   const parsed = parseRawXml(xml);
-  const envelope = parsed?.ENVELOPE as any;
+  const envelope = parsed.ENVELOPE;
   const data = envelope?.BODY?.DATA ?? envelope;
 
   const list = asArray(data?.TC_VOUCHERSTATISTICSREPORT ?? data?.TC_VoucherStatisticsReport ?? data?.VoucherStatistics);
@@ -199,7 +242,7 @@ export function parseVoucherStatistics(xml: string): VoucherStatistics[] {
 
 export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeStat[] {
   const parsed = parseRawXml(xml);
-  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+  const data = parsed.ENVELOPE?.BODY?.DATA;
   if (!data) return [];
 
   const vchTypes = asArray(data?.VCHTYPESTAT ?? data?.VchTypeStat);
@@ -228,7 +271,7 @@ export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeS
 
   // Fallback for custom report
   const list = asArray(
-    data?.PeriodicVoucherStatReport?.PERIODICVOUCHERSTATREPORT?.PeriodicVoucherStatPart?.PERIODICVOUCHERSTATPART?.PeriodicVoucherStatLine ||
+    (data?.PeriodicVoucherStatReport as Record<string, unknown> | undefined)?.PERIODICVOUCHERSTATREPORT ||
     data?.COLLECTION?.OBJECT
   );
 
@@ -250,17 +293,17 @@ export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeS
 
 export function parsePostResponse(xml: string): PostResponse[] {
   const parsed = parseRawXml(xml);
-  const envelope = parsed?.ENVELOPE as any;
+  const envelope = parsed.ENVELOPE;
   if (!envelope) {
     return [{ status: "failure", message: "Invalid XML response: missing ENVELOPE" }];
   }
 
-  const data = envelope?.BODY?.DATA ?? envelope?.DATA;
+  const data = envelope.BODY?.DATA ?? envelope.DATA;
 
   // Check custom report results: <RESULTS><RESULT>...
-  const results = data?.RESULTS?.RESULT ?? envelope?.RESULTS?.RESULT;
+  const results = data?.RESULTS?.RESULT ?? envelope.RESULTS?.RESULT;
   if (results) {
-    return asArray(results).map((item: any) => {
+    return asArray(results).map((item: TallyXmlResultItem) => {
       const r = new TallyReader(item);
       const err = r.text("ERROR");
       const isFailure = !!err;
@@ -320,14 +363,14 @@ export function parsePostResponse(xml: string): PostResponse[] {
 
 export function parseActiveCompany(xml: string): string {
   const parsed = parseRawXml(xml);
-  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+  const data = parsed.ENVELOPE?.BODY?.DATA;
   const val = data?.RESULT ?? data?.STATICVARIABLES?.SVCURRENTCOMPANY ?? data;
   return typeof val === "string" ? val.trim() : (tallyText(val) ?? "").trim();
 }
 
-export function parseLicenseInfo(xml: string): any {
+export function parseLicenseInfo(xml: string): LicenseInfo {
   const parsed = parseRawXml(xml);
-  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
+  const data = parsed.ENVELOPE?.BODY?.DATA;
   const collection = data?.COLLECTION;
   const rawObj = collection?.OBJECT ?? collection?.TC_LICENSEINFOOBJECT ?? collection;
   const obj = Array.isArray(rawObj) ? rawObj[0] : rawObj;
@@ -357,10 +400,10 @@ export function parseLicenseInfo(xml: string): any {
   };
 }
 
-export function parseLastAlterIds(xml: string): any {
+export function parseLastAlterIds(xml: string): { mastersLastId: number; vouchersLastId: number } {
   const parsed = parseRawXml(xml);
-  const data = (parsed as any)?.ENVELOPE?.BODY?.DATA;
-  const report = data?.TC_ALTERIDSREPORT ?? data?.LastAlterIdsReport?.LASTALTERIDSREPORT?.LastAlterIdsPart?.LASTALTERIDSPART?.LastAlterIdsLine ?? data;
+  const data = parsed.ENVELOPE?.BODY?.DATA;
+  const report = data?.TC_ALTERIDSREPORT ?? data?.LastAlterIdsReport ?? data;
   const r = new TallyReader(report);
   return {
     mastersLastId: r.number("MASTERSLASTID") ?? 0,

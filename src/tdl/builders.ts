@@ -37,11 +37,25 @@ export function buildExportCollectionXml(
   const fromDate = formatDateForTally(options.fromDate);
   const toDate = formatDateForTally(options.toDate);
 
-  // Auto-include sub-collections for Voucher full fidelity
+  // Auto-include sub-collections for Voucher, StockItem, and Ledger full fidelity
   let fetchList = options.fetchList;
   if (!fetchList || fetchList.length === 0) {
-    if (collectionType.toLowerCase() === "voucher") {
+    const colLower = collectionType.toLowerCase();
+    if (colLower === "voucher") {
       fetchList = [...VOUCHER_FETCH_PROFILES.full];
+    } else if (colLower === "stockitem") {
+      fetchList = [
+        "MasterId", "*", "CanDelete",
+        "ClosingBalance", "ClosingRate", "ClosingValue",
+        "OpeningBalance", "OpeningRate", "OpeningValue",
+        "GstApplicable", "GstHsnName", "GstHsnDescription", "Taxability"
+      ];
+    } else if (colLower === "ledger") {
+      fetchList = [
+        "MasterId", "*", "CanDelete",
+        "ClosingBalance", "OpeningBalance",
+        "Address.List", "LedMailingDetails.List", "LedGstRegDetails.List"
+      ];
     } else {
       fetchList = ["MasterId", "*", "CanDelete"];
     }

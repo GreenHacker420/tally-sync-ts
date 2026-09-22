@@ -36,6 +36,8 @@ export const REGEX_DATE_DELIMITER = /[-/]/g;
 export const NUMERIC_PATTERN = "[+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)";
 export const REGEX_QUANTITY = new RegExp(`^(${NUMERIC_PATTERN})(?:\\s+(.+))?$`);
 export const REGEX_RATE = new RegExp(`^(${NUMERIC_PATTERN})(?:\\/([^\\s]+))?$`);
+export const REGEX_CR = /\bcr\b|cr$/i;
+export const REGEX_CLEAN_NUMERIC = /[^0-9.-]/g;
 
 export const COMMON_REGEX = {
   CONTROL_CHAR: REGEX_CONTROL_CHAR,
@@ -45,6 +47,8 @@ export const COMMON_REGEX = {
   NUMERIC_PATTERN,
   QUANTITY: REGEX_QUANTITY,
   RATE: REGEX_RATE,
+  CR: REGEX_CR,
+  CLEAN_NUMERIC: REGEX_CLEAN_NUMERIC,
 } as const;
 
 export function getSingleValue(val: unknown): unknown {

@@ -19,10 +19,15 @@ export function asArray<T>(val: T | T[] | undefined | null): T[] {
   return [val];
 }
 
+/**
+ * TallyReader provides ultra-fast O(1) case-insensitive field lookups
+ * by building an internal uppercase key-map on construction.
+ */
 export class TallyReader {
   private readonly node: Record<string, unknown>;
+  private readonly upperMap: Map<string, unknown>;
 
-  constructor(node: Record<string, unknown> | unknown[] | undefined | null) {
+  constructor(node: unknown) {
     if (Array.isArray(node)) {
       this.node = (node[0] && typeof node[0] === "object") ? (node[0] as Record<string, unknown>) : {};
     } else if (node && typeof node === "object") {
@@ -30,16 +35,18 @@ export class TallyReader {
     } else {
       this.node = {};
     }
+
+    this.upperMap = new Map();
+    for (const [k, v] of Object.entries(this.node)) {
+      this.upperMap.set(k.toUpperCase(), v);
+    }
   }
 
+  /**
+   * Ultra-fast O(1) case-insensitive lookup using pre-computed upper map
+   */
   raw(tag: string): unknown {
-    if (!this.node || typeof this.node !== "object") return undefined;
-    if (this.node[tag] !== undefined) return this.node[tag];
-    const upper = tag.toUpperCase();
-    for (const [k, v] of Object.entries(this.node)) {
-      if (k.toUpperCase() === upper) return v;
-    }
-    return undefined;
+    return this.upperMap.get(tag.toUpperCase());
   }
 
   text(tag: string): string | undefined {
@@ -83,10 +90,10 @@ export class TallyReader {
   }
 
   attr(name: string): string | undefined {
+    const upper = name.toUpperCase();
     return tallyText(
-      this.node[`@_${name.toUpperCase()}`] ??
-      this.node[`@_${name}`] ??
-      this.raw(`@_${name}`)
+      this.upperMap.get("@_" + upper) ??
+      this.upperMap.get(upper)
     );
   }
 
