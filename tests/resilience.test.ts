@@ -17,6 +17,14 @@ describe("JobQueue: leases, fencing and crash recovery", () => {
     assert.equal(q.enqueue({ ...job(2), idempotencyKey: "k1" }), "DUPLICATE");
   });
 
+  it("enqueue joins the caller's transaction: a rollback removes the job too (cursor and jobs commit together)", () => {
+    const db = new DatabaseSync(":memory:"); const q = new JobQueue(db);
+    db.exec("BEGIN"); q.enqueue(job(1)); db.exec("ROLLBACK");
+    assert.equal(q.lease(1).length, 0);
+    db.exec("BEGIN"); q.enqueue(job(2)); db.exec("COMMIT");
+    assert.equal(q.lease(1).length, 1);
+  });
+
   it("a job is leased to exactly one worker", () => {
     const q = new JobQueue(new DatabaseSync(":memory:")); q.enqueue(job(1));
     assert.equal(q.lease(10).length, 1);

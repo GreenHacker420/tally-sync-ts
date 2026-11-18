@@ -450,7 +450,7 @@ Yes. See [Full solutions & custom builds](#full-solutions--custom-builds).
 
 `tally-sync-ts` is one part of a larger product. If you want the finished system rather than building it yourself, get in touch:
 
-- **ShopControl**: billing, stock and GST for shops and distributors, with a **mobile app, web app and WhatsApp** (invoices, payment reminders, order intake), and a **ready-made Tally desktop synchroniser** built on this library (two-way sync, voucher numbers shown side by side, owner approvals, audit trail).
+- **ShopControl** (production-grade, in use with client businesses): billing, stock and GST for shops and distributors, with a **mobile app, web app and WhatsApp** (invoices, payment reminders, order intake), and a **ready-made Tally desktop synchroniser** built on this library (two-way sync, voucher numbers shown side by side, owner approvals, audit trail).
 - **Integration**: connect Tally to your own software, ERP, e-commerce or WhatsApp flows.
 - **Custom builds**: dashboards, reports, mobile and web apps, automation and anything else your business needs, designed around how you actually work.
 

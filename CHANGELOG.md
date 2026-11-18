@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.3.3
+- `JobQueue` operations join an open transaction instead of failing with "cannot start a transaction within a transaction", so a caller can persist pulled events, enqueue jobs and advance its cursor atomically. Contact details in the README.
+
 ## 2.3.2
 - Documentation and metadata only: search-friendly README (quick facts, FAQ, use cases), package description and keywords, pointer from the unmaintained FinSync360 prototype.
 

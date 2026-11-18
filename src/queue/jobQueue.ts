@@ -69,7 +69,9 @@ export class JobQueue {
   }
   private token(): string { return this.options.newToken?.() ?? `${this.now()}-${Math.random().toString(36).slice(2)}`; }
 
+  /** Runs in its own immediate transaction, or joins the caller's: a caller can store events and advance its cursor atomically with the enqueue. */
   private tx<T>(fn: () => T): T {
+    if (this.db.isTransaction) return fn();
     this.db.exec("BEGIN IMMEDIATE");
     try { const r = fn(); this.db.exec("COMMIT"); return r; } catch (e) { this.db.exec("ROLLBACK"); throw e; }
   }

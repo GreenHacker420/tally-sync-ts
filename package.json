@@ -1,6 +1,6 @@
 {
   "name": "tally-sync-ts",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "TallyPrime and Tally ERP 9 integration library for Node.js and TypeScript: Tally API / XML SDK, idempotent GST invoice posting with read-back verification, two-way sync, SQLite mirror, GSTR-1 and GSTR-3B. Part of the ShopControl solution.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
