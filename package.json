@@ -25,7 +25,8 @@
     "build": "tsc",
     "prepare": "npm run build",
     "test": "node --import tsx --test --test-skip-pattern=\"XML Parser - C# fixture samples\" \"tests/**/*.test.ts\"",
-    "example": "node --import tsx examples/example.ts"
+    "example": "node --import tsx examples/example.ts",
+    "test:live": "node --import tsx --test tests/live/*.live.test.ts"
   },
   "keywords": [
     "tally",
