@@ -112,3 +112,8 @@ export function explainPolicy(resolved: ResolvedPolicy, key: PolicyKey): string 
 export function policyNumber(resolved: ResolvedPolicy, key: PolicyKey): number {
   return resolved.values[key] as number;
 }
+
+/** Plain-data copy of the registry for consumers that cannot import this package (e.g. the cloud policy service). */
+export function policyRegistryJson(): { version: number; defs: PolicyDef[] } {
+  return { version: 1, defs: POLICY_DEFS.map((d) => ({ ...d })) };
+}

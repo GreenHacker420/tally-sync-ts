@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased (targets 2.0.0 — breaking changes allowed)
+## 2.0.0 — dynamic engine
+
+### Dynamic engine (nothing company-specific is typed in code)
+- **Policy registry** (`resolvePolicy`, `explainPolicy`): every tunable declared once with bounds; layered resolution (default < dialect < discovered < learned < tenant < shop < company < document) with provenance; `policyRegistryJson()` / `npm run export:policy` for consumers that vendor the registry.
+- **Dialects** (`TALLY_PRIME_DIALECT`, `WINDOWS_FINDER_ENVIRONMENT`): Tally vocabulary and finder environment as data. The invoice builder no longer invents a godown, batch or country, and looks up tax ledgers only when tax is charged.
+- **Company profile** (`discoverCompanyProfile`, `buildCompanyProfile`): ledger roles by group ancestry and GST duty head, never by name; typed owner questions.
+- **Blueprint learner** (`learnVoucherBlueprint`) and `learnLedgerNames` / `resolveInvoiceContext` / `buildSalesInvoiceFor`: ledgers, godown and batch come from the company's own vouchers, with provenance. `TallyClient.getRawVoucherWindow`.
+- **Rule packs** (`compileRulePack`, `signPack`, `loadSignedPack`, `QuarantineLog`): import-error classification as validated, signed, rollback-proof data.
+- **Adaptive control** (`LatencyTracker`, `adaptiveTimeoutMs`, `AimdBatch`, `retryDelayMs`, `DecisionLog`); `TallyGate` accepts `adaptive`.
+- **Breaking:** `LedgerNames.roundOff` is optional; builder defaults for godown/batch/country removed; `ImportErrorCode` is open-ended.
+
+## 2.0.0 base (breaking changes allowed)
 
 ### Fixed
 - `parsePostResponse` now understands Tally's real `<RESPONSE>` import reply (previously every real reply was

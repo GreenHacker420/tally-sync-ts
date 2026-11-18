@@ -50,3 +50,12 @@ describe("policy registry", () => {
     assert.ok(waited >= 900 && waited < 5_000, `waited ${waited}ms, expected ~1000ms not the 30s default`);
   });
 });
+
+import { policyRegistryJson } from "../src/index.js";
+import { readFileSync } from "node:fs";
+describe("policy registry export", () => {
+  it("policy-registry.json matches the registry (regenerate with npm run export:policy)", () => {
+    const committed = JSON.parse(readFileSync(new URL("../policy-registry.json", import.meta.url), "utf8"));
+    assert.deepEqual(committed, policyRegistryJson());
+  });
+});
