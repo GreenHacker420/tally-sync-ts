@@ -69,3 +69,7 @@ export * from "./analytics/index.js";
 
 // 808 Tally XML Tags Catalog
 export * from "./schema/catalog/tallyTagsCatalog.js";
+
+// Import outcome classification + Tally.imp reader
+export * from "./importOutcome.js";
+export * from "./importLog.js";
