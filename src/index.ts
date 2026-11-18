@@ -107,3 +107,4 @@ export * from "./config/policy.js";
 export * from "./profile/companyProfile.js";
 export * from "./profile/blueprint.js";
 export * from "./profile/learnedNames.js";
+export * from "./profile/invoiceContext.js";

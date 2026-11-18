@@ -169,3 +169,10 @@ export function roundOffUsage(bp: VoucherBlueprint, candidates: readonly string[
   const hit = bp.ledgers.find((l) => set.has(l.name.trim().toLowerCase()));
   return hit ? { name: hit.name, fraction: hit.fraction, negativeShare: hit.count === 0 ? 0 : hit.negativeCount / hit.count } : undefined;
 }
+
+/** A batch name worth emitting on every line, only when lines consistently carry the same one. */
+export function dominantBatch(bp: VoucherBlueprint, minConfidence: number): BlueprintChoice<string> | undefined {
+  const top = bp.batches[0];
+  if (!top || bp.lineBatchFraction < minConfidence || top.fraction < minConfidence) return undefined;
+  return { value: top.name, confidence: Math.min(top.fraction, bp.lineBatchFraction), evidence: `${top.count}/${bp.sampleSize} vouchers` };
+}
