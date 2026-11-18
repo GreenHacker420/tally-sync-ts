@@ -1,7 +1,7 @@
 {
   "name": "tally-sync-ts",
-  "version": "2.3.0",
-  "description": "Typed TypeScript client for the Tally Prime and Tally ERP 9 XML/TDL API",
+  "version": "2.3.1",
+  "description": "TallyPrime and Tally ERP 9 sync engine for TypeScript: discovers the company's own ledgers, posts GST invoices idempotently with read-back verification, protects Tally from overload, and survives crashes. Part of the ShopControl solution.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -9,7 +9,7 @@
     "dist",
     "README.md"
   ],
-  "author": "GreenHacker",
+  "author": "GreenHacker420 (Harsh Hirawat)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GreenHacker420/tally-sync-ts.git"
@@ -30,13 +30,24 @@
     "export:policy": "npm run build && node scripts/export-policy-registry.mjs"
   },
   "keywords": [
+    "accounting",
+    "api",
+    "circuit-breaker",
+    "connector",
+    "erp",
+    "gst",
+    "idempotent",
+    "india",
+    "invoice",
+    "job-queue",
+    "shopcontrol",
+    "sync",
+    "synchronisation",
     "tally",
     "tallyprime",
-    "connector",
-    "accounting",
-    "xml",
-    "api",
-    "typescript"
+    "typescript",
+    "whatsapp-billing",
+    "xml"
   ],
   "license": "MIT",
   "dependencies": {

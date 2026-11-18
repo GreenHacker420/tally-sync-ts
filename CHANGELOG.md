@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.3.1
+- Documentation: new README (recommended posting flow, resilience toolkit, safety rules, what is and is not verified) and package metadata; no code changes.
+
 ## 2.3.0 — resilience
 - `JobQueue` (SQLite): leases with fencing tokens, crash recovery that turns a mid-post lease into VERIFYING (never a blind retry), bounded retries with backoff and a dead letter, waiting-for-master that does not consume attempts, essential vs sheddable jobs, in-place schema upgrade, prune, stats.
 - `CircuitBreaker` (rolling window, single probe, only availability failures count), `backoffMs`, `SseParser` (state across chunks, bounded buffer), `ResourceGuard` (heap, disk, event-loop delay: shed background work, never posting).
