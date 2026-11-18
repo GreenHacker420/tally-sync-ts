@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0
+- `wrapVoucherImport` / `PostOptions.credentials`: send `SVUSERNAME`/`SVPASSWORD` on an import for companies with Tally security.
+- `withInvoiceContext`: business facts + resolved context = the complete `SalesInvoiceInput`.
+
 ## 2.1.0
 - `CompanyContextLearner`: keeps a company's learned invoice context; re-reads the cheap masters every call and the heavy voucher sample only when the master fingerprint changes or the context is stale. New policy keys `learn.sampleVouchers`, `learn.maxMonths`, `learn.minConfidencePercent`, `learn.refreshHours`.
 

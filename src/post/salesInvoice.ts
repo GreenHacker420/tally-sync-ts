@@ -208,11 +208,11 @@ ${batchXml}      </ALLINVENTORYENTRIES.LIST>`;
 }
 
 /** Wrap one or more rendered vouchers in an import envelope for the given company. */
-export function wrapVoucherImport(voucherXml: string, company?: string): string {
+export function wrapVoucherImport(voucherXml: string, company?: string, credentials?: { username: string; password: string }): string {
   return `<ENVELOPE>
   <HEADER><VERSION>1</VERSION><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE><ID>Vouchers</ID></HEADER>
   <BODY>
-    <DESC><STATICVARIABLES>${company ? `<SVCURRENTCOMPANY>${x(company)}</SVCURRENTCOMPANY>` : ""}</STATICVARIABLES></DESC>
+    <DESC><STATICVARIABLES>${company ? `<SVCURRENTCOMPANY>${x(company)}</SVCURRENTCOMPANY>` : ""}${credentials ? `<SVUSERNAME>${x(credentials.username)}</SVUSERNAME><SVPASSWORD>${x(credentials.password)}</SVPASSWORD>` : ""}</STATICVARIABLES></DESC>
     <DATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
     ${voucherXml}
     </TALLYMESSAGE></DATA>

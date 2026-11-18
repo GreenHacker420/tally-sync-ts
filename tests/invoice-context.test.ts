@@ -55,3 +55,19 @@ describe("learn from built vouchers, then build again (round trip over random co
     assert.ok(r.questions.some((q) => q.code === QuestionCode.TAX_LEDGER_AMBIGUOUS));
   });
 });
+
+import { wrapVoucherImport, withInvoiceContext } from "../src/index.js";
+describe("import envelope credentials and context composition", () => {
+  it("adds credentials only when given, escaped", () => {
+    assert.ok(!wrapVoucherImport("<V/>", "C").includes("SVUSERNAME"));
+    const x = wrapVoucherImport("<V/>", "C", { username: "a&b", password: "p<q" });
+    assert.match(x, /<SVUSERNAME>a&amp;b<\/SVUSERNAME><SVPASSWORD>p&lt;q<\/SVPASSWORD>/);
+  });
+  it("withInvoiceContext fills state, ledgers and per-line godown/batch without overriding a line's own", () => {
+    const c = { companyState: "S", ledgers: { sales: "SL", tax: { mode: "COMMON" as const, cgst: "C", sgst: "S", igst: "I" } }, godown: "G", batch: "B", provenance: {} };
+    const gst = { taxability: "Taxable", basisPoints: { cgst: 0, sgst: 0, igst: 0, cess: 0 } };
+    const r = withInvoiceContext(c, { idempotencyKey: "k", date: "20260101", party: { name: "P" }, placeOfSupply: "S", taxMode: TaxMode.INCLUSIVE, lines: [{ itemName: "a", quantity: "1", unit: "U", amountPaise: 100, gst }, { itemName: "b", quantity: "1", unit: "U", amountPaise: 100, gst, godown: "OWN" }] });
+    assert.equal(r.companyState, "S");
+    assert.deepEqual(r.lines.map((l) => [l.godown, l.batch]), [["G", "B"], ["OWN", "B"]]);
+  });
+});

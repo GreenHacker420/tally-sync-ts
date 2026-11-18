@@ -35,8 +35,13 @@ export function resolveInvoiceContext(profile: CompanyProfile, bp: VoucherBluepr
 
 export type BusinessInvoiceInput = Omit<SalesInvoiceInput, "companyState" | "ledgers">;
 
+/** Business facts + a resolved company context = the complete input `buildSalesInvoice` / `postSalesInvoice` take. */
+export function withInvoiceContext(context: InvoiceContext, input: BusinessInvoiceInput): SalesInvoiceInput {
+  const lines: InvoiceLineInput[] = input.lines.map((l) => ({ ...l, godown: l.godown ?? context.godown, batch: l.batch ?? context.batch }));
+  return { ...input, lines, companyState: context.companyState, ledgers: context.ledgers };
+}
+
 /** Render a sales invoice from the business facts plus a resolved company context (no ledger, state, godown or batch literals). */
 export function buildSalesInvoiceFor(context: InvoiceContext, input: BusinessInvoiceInput): BuiltSalesInvoice {
-  const lines: InvoiceLineInput[] = input.lines.map((l) => ({ ...l, godown: l.godown ?? context.godown, batch: l.batch ?? context.batch }));
-  return buildSalesInvoice({ ...input, lines, companyState: context.companyState, ledgers: context.ledgers });
+  return buildSalesInvoice(withInvoiceContext(context, input));
 }

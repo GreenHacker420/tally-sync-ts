@@ -41,6 +41,8 @@ export interface PostOptions {
   /** Path of Tally.imp (see importLogPath) so an empty LINEERROR can still be explained. */
   importLogFile?: string;
   verify?: boolean;
+  /** For a Tally company that has security enabled; sent only on the import. */
+  credentials?: { username: string; password: string };
 }
 
 const num = (v: unknown): number => (typeof v === "number" ? v : typeof v === "object" && v && "value" in v ? Number((v as { value: unknown }).value) : Number(v));
@@ -76,7 +78,7 @@ export async function postSalesInvoice(client: TallyClient, input: SalesInvoiceI
 
     // 2. Import (capture only this import's lines of Tally.imp).
     const mark = options.importLogFile ? await importLogMark(options.importLogFile) : 0;
-    const [reply] = await client.sendImport(wrapVoucherImport(built.xml, options.company ?? undefined));
+    const [reply] = await client.sendImport(wrapVoucherImport(built.xml, options.company ?? undefined, options.credentials));
     if (reply.status !== "success") {
       const logText = options.importLogFile ? await readImportLogSince(options.importLogFile, mark) : undefined;
       const info = classifyImportOutcome(reply, logText)!;
