@@ -8,7 +8,7 @@ import { join, relative } from "node:path";
  * Protocol facts live in src/dialects, tunables in src/config. Protocol plumbing directories are exempt.
  */
 const ROOT = new URL("../src", import.meta.url).pathname;
-const EXEMPT_DIRS = ["dialects", "config", "testing", "schema", "xml", "tdl", "analytics", "sqlite"];
+const EXEMPT_DIRS = ["dialects", "config", "testing", "schema", "xml", "tdl", "analytics", "sqlite", "rules"];
 const EXEMPT_FILES = new Set(["index.ts", "xmlBuilder.ts"]);
 
 const RULES: Array<{ name: string; pattern: RegExp; hint: string }> = [

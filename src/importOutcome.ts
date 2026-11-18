@@ -1,4 +1,6 @@
 import type { PostResponse } from "./xmlParser.js";
+import { compileRulePack, type CompiledPack, type CompiledRule, type QuarantineLog } from "./rules/rulePack.js";
+import { TALLY_PRIME_IMPORT_RULES } from "./rules/importRules.js";
 
 /** Machine-readable reasons an import can fail. Extend with real `Tally.imp` samples as they are collected. */
 export const ImportErrorCode = {
@@ -10,7 +12,8 @@ export const ImportErrorCode = {
   COMPANY_NOT_LOADED: "COMPANY_NOT_LOADED",
   UNKNOWN: "UNKNOWN",
 } as const;
-export type ImportErrorCode = (typeof ImportErrorCode)[keyof typeof ImportErrorCode];
+/** Open-ended: a delivered rule pack may introduce codes this build has never seen. */
+export type ImportErrorCode = (typeof ImportErrorCode)[keyof typeof ImportErrorCode] | (string & {});
 
 /** TRANSIENT = retrying later can succeed without anyone changing data; PERMANENT = needs a data/config fix. */
 export const ImportErrorClass = {
@@ -38,43 +41,28 @@ export interface ImportErrorInfo {
   detail?: ImportErrorDetail;
 }
 
-interface Rule {
-  code: ImportErrorCode;
-  class: ImportErrorClass;
-  pattern: RegExp;
-  detail?: (match: RegExpMatchArray) => ImportErrorDetail | undefined;
+const toNumber = (s: string): number => Number(s.replace(/,/g, ""));
+const DEFAULT_PACK = compileRulePack(TALLY_PRIME_IMPORT_RULES);
+
+function readDetail(rule: CompiledRule, m: RegExpMatchArray): ImportErrorDetail | undefined {
+  const d = rule.data.detail;
+  if (!d) return undefined;
+  if (d.kind === "master") return { masterKind: m[d.kindGroup], masterName: m[d.nameGroup] };
+  return { debit: toNumber(m[d.debitGroup]), credit: toNumber(m[d.creditGroup]), difference: toNumber(m[d.differenceGroup]) };
 }
 
-const toNumber = (s: string): number => Number(s.replace(/,/g, ""));
+export interface ClassifyOptions { pack?: CompiledPack; quarantine?: QuarantineLog }
 
-// Chain of responsibility: first matching rule wins, so order encodes specificity.
-const RULES: readonly Rule[] = [
-  {
-    code: ImportErrorCode.TOTALS_MISMATCH,
-    class: ImportErrorClass.PERMANENT,
-    pattern: /voucher totals do not match[\s\S]*?Dr:\s*([\d,]+(?:\.\d+)?)[^C]*?Cr:\s*([\d,]+(?:\.\d+)?)[\s\S]*?Diff:\s*([\d,]+(?:\.\d+)?)/i,
-    detail: (m) => ({ debit: toNumber(m[1]), credit: toNumber(m[2]), difference: toNumber(m[3]) }),
-  },
-  { code: ImportErrorCode.VOUCHER_TYPE_MISSING, class: ImportErrorClass.PERMANENT, pattern: /voucher type\s+'[^']*'\s+does not exist/i },
-  {
-    code: ImportErrorCode.MASTER_MISSING,
-    class: ImportErrorClass.PERMANENT,
-    pattern: /(Ledger|Stock Item|Stock Group|Unit|Godown|Group|Cost Centre|Currency|Batch)\s+'([^']+)'\s+does not exist/i,
-    detail: (m) => ({ masterKind: m[1], masterName: m[2] }),
-  },
-  { code: ImportErrorCode.DATE_OUT_OF_RANGE, class: ImportErrorClass.PERMANENT, pattern: /date is out of range/i },
-  { code: ImportErrorCode.ALREADY_EXISTS, class: ImportErrorClass.PERMANENT, pattern: /already exists/i },
-  { code: ImportErrorCode.COMPANY_NOT_LOADED, class: ImportErrorClass.TRANSIENT, pattern: /could not set 'SVCurrentCompany'/i },
-];
-
-export function classifyImportError(text: string, source: ImportErrorSource = ImportErrorSource.LINEERROR): ImportErrorInfo {
-  for (const rule of RULES) {
-    const match = text.match(rule.pattern);
+/** Chain of responsibility over the rule pack (data, replaceable): first matching rule wins. Unknown text is quarantined when a log is supplied. */
+export function classifyImportError(text: string, source: ImportErrorSource = ImportErrorSource.LINEERROR, options: ClassifyOptions = {}): ImportErrorInfo {
+  for (const rule of (options.pack ?? DEFAULT_PACK).rules) {
+    const match = text.match(rule.regex);
     if (match) {
-      const detail = rule.detail?.(match);
-      return { code: rule.code, class: rule.class, text, source, ...(detail ? { detail } : {}) };
+      const detail = readDetail(rule, match);
+      return { code: rule.data.code as ImportErrorCode, class: rule.data.class, text, source, ...(detail ? { detail } : {}) };
     }
   }
+  options.quarantine?.record(text);
   return { code: ImportErrorCode.UNKNOWN, class: ImportErrorClass.PERMANENT, text, source };
 }
 
@@ -82,12 +70,12 @@ export function classifyImportError(text: string, source: ImportErrorSource = Im
  * Classify a failed import. Prefers Tally's LINEERROR text; falls back to the text appended to
  * Tally.imp during the import (TallyPrime 3.0+ may leave LINEERROR empty). Returns undefined on success.
  */
-export function classifyImportOutcome(response: PostResponse, importLogText?: string): ImportErrorInfo | undefined {
+export function classifyImportOutcome(response: PostResponse, importLogText?: string, options: ClassifyOptions = {}): ImportErrorInfo | undefined {
   if (response.status === "success") return undefined;
   if (response.lineErrors?.length) {
-    return classifyImportError(response.lineErrors.join("; "), ImportErrorSource.LINEERROR);
+    return classifyImportError(response.lineErrors.join("; "), ImportErrorSource.LINEERROR, options);
   }
   const log = importLogText?.trim();
-  if (log) return classifyImportError(log, ImportErrorSource.IMPORT_LOG);
-  return classifyImportError(response.message, ImportErrorSource.NONE);
+  if (log) return classifyImportError(log, ImportErrorSource.IMPORT_LOG, options);
+  return classifyImportError(response.message, ImportErrorSource.NONE, options);
 }
