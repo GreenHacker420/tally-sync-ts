@@ -16,6 +16,8 @@ export interface RequestOptions {
   childOf?: string;
   collectionType?: string;
   belongsTo?: "Yes" | "No";
+  /** Also return deleted objects (collection attribute Include Deleted). [verify per release] */
+  includeDeleted?: boolean;
 }
 
 export interface PaginatedRequestOptions extends RequestOptions {
@@ -82,6 +84,7 @@ export function buildExportCollectionXml(
   }
 
   const childOfTag = options.childOf ? `\n        <CHILDOF>${escapeTdlString(options.childOf)}</CHILDOF>` : "";
+  const includeDeletedTag = options.includeDeleted ? `\n        <INCLUDEDELETED>Yes</INCLUDEDELETED>` : "";
   const belongsToTag = options.belongsTo ? `\n        <BELONGSTO>${escapeXmlText(options.belongsTo)}</BELONGSTO>` : "";
 
   return `<ENVELOPE>
@@ -103,7 +106,7 @@ export function buildExportCollectionXml(
       <TDL>
         <TDLMESSAGE>
           <COLLECTION NAME="TC_ExportCollection">
-            <TYPE>${escapeXmlText(collectionType)}</TYPE>${childOfTag}${belongsToTag}${paginationTags}
+            <TYPE>${escapeXmlText(collectionType)}</TYPE>${childOfTag}${belongsToTag}${includeDeletedTag}${paginationTags}
             ${fetchTags}
             ${filterTags}
           </COLLECTION>

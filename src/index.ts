@@ -78,3 +78,6 @@ export * from "./importLog.js";
 export * from "./errors.js";
 export * from "./gate.js";
 export * from "./recording.js";
+
+// Change detection: month-chunked voucher index + diff
+export * from "./voucherIndex.js";

@@ -28,6 +28,8 @@ import {
 } from "./xmlParser.js";
 import { TallyObjectType, TallyObjectMap } from "./schema/registry.js";
 import { FetchTallyTransport, TallyTransport } from "./transport.js";
+import { GatePriority, TallyGate } from "./gate.js";
+import { parseVoucherIndex, monthWindows, type VoucherIndexRow, type DateWindow } from "./voucherIndex.js";
 export { FetchTallyTransport as HttpTransport };
 import { Voucher } from "./schema/transactions/types.js";
 import { Company, Ledger, StockItem } from "./schema/masters/types.js";
@@ -242,6 +244,38 @@ export class TallyClient {
     const parsed = parseRawXml(resp);
     const body = parsed?.ENVELOPE?.BODY?.DATA as unknown as string;
     return String(body || "").trim();
+  }
+
+  /**
+   * One light read of voucher identity (GUID/MasterID/AlterID/flags) for a date window. Tally returns whole
+   * voucher objects regardless of FETCH, so keep windows to a month. Sent at HEAVY_READ priority when gated.
+   */
+  public async getVoucherIndexWindow(window: DateWindow, options: { company?: string; includeDeleted?: boolean } = {}): Promise<VoucherIndexRow[]> {
+    const reqXml = buildExportCollectionXml("Voucher", {
+      company: options.company ?? this.defaultCompany,
+      fromDate: window.from,
+      toDate: window.to,
+      collectionType: "Voucher",
+      fetchList: ["GUID", "MasterID", "AlterID", "Date", "VoucherTypeName", "VoucherNumber", "PartyLedgerName", "IsCancelled", "IsOptional", ...(options.includeDeleted ? ["IsDeleted"] : [])],
+      includeDeleted: options.includeDeleted,
+    });
+    const respXml = this.transport instanceof TallyGate
+      ? await this.transport.sendWithPriority(reqXml, `Voucher index ${window.from}-${window.to}`, GatePriority.HEAVY_READ)
+      : await this.sendRequest(reqXml, `Voucher index ${window.from}-${window.to}`);
+    const error = checkTallyError(respXml);
+    if (error) throw new Error(`Tally error reading voucher index: ${error}`);
+    return parseVoucherIndex(respXml);
+  }
+
+  /** Month-chunked index of every voucher between two dates (YYYYMMDD). */
+  public async getVoucherIndex(from: string, to: string, options: { company?: string; includeDeleted?: boolean; onWindow?: (w: DateWindow, rows: number) => void } = {}): Promise<VoucherIndexRow[]> {
+    const all: VoucherIndexRow[] = [];
+    for (const window of monthWindows(from, to)) {
+      const rows = await this.getVoucherIndexWindow(window, options);
+      options.onWindow?.(window, rows.length);
+      all.push(...rows);
+    }
+    return all;
   }
 
   public async getLicenseInfo(): Promise<LicenseInfo> {
