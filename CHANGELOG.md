@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.3.2
+- Documentation and metadata only: search-friendly README (quick facts, FAQ, use cases), package description and keywords, pointer from the unmaintained FinSync360 prototype.
+
 ## 2.3.1
 - Documentation: new README (recommended posting flow, resilience toolkit, safety rules, what is and is not verified) and package metadata; no code changes.
 

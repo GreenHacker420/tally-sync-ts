@@ -1,33 +1,43 @@
-# tally-sync-ts
+# tally-sync-ts: TallyPrime & Tally ERP 9 Integration Library for Node.js and TypeScript
 
-[![npm](https://img.shields.io/npm/v/tally-sync-ts.svg)](https://www.npmjs.com/package/tally-sync-ts) [![license](https://img.shields.io/npm/l/tally-sync-ts.svg)](#license)
+**tally-sync-ts is an open-source TypeScript SDK and synchronisation engine for TallyPrime and Tally ERP 9.** Use it to build a **Tally API integration**: push **GST sales invoices** into Tally over the XML/TDL gateway **without duplicates**, pull ledgers, stock items and vouchers into your app or database, and keep two systems in sync with **idempotent posting, read-back verification, retries and crash recovery**.
 
-A typed TypeScript client and **synchronisation engine for TallyPrime and Tally ERP 9**, built for software that has to put real invoices into a real company file and be sure of what happened.
-
-It talks to Tally's XML gateway, but it does not assume anything about *your* Tally: it **discovers the company's own ledgers, tax layout, godown and batch habits**, posts **idempotently** (a retry can never create a second voucher), **reads every voucher back**, and protects a single-threaded Tally from the traffic that normally hangs it.
+[![npm version](https://img.shields.io/npm/v/tally-sync-ts.svg)](https://www.npmjs.com/package/tally-sync-ts) [![npm downloads](https://img.shields.io/npm/dm/tally-sync-ts.svg)](https://www.npmjs.com/package/tally-sync-ts) [![license: MIT](https://img.shields.io/npm/l/tally-sync-ts.svg)](#license) [![node](https://img.shields.io/node/v/tally-sync-ts.svg)](#requirements) [![types: TypeScript](https://img.shields.io/badge/types-TypeScript-blue.svg)](#key-features)
 
 ```bash
 npm install tally-sync-ts
 ```
 
-> **Need the whole product, not just the library?** See [Full solutions & custom builds](#full-solutions--custom-builds) at the end: ShopControl (billing + stock + GST app, web, mobile, WhatsApp) with a ready Tally synchroniser, or a custom build for your business.
+> **Need the whole product, not just the SDK?** An enterprise-grade, production-ready **ShopControl** solution (billing, stock and GST app, **web, mobile and WhatsApp**, ready **Tally desktop synchroniser**) and **custom builds** are available: see [Full solutions & custom builds](#full-solutions--custom-builds) or write to **harsh@greenhacker.tech**.
 
-## What it does
+## Quick facts
 
 | | |
 |---|---|
-| **Post sales invoices safely** | Integer-paise GST maths (inclusive and exclusive, per-slab or per-line rounding), a balance check before anything is sent, GUID-based idempotency, read-back verification, classified failures (`TRANSIENT` vs `PERMANENT`). |
-| **Learn the company, don't hardcode it** | `discoverCompanyProfile` classifies ledgers by *group ancestry and GST duty head* (never by name); `learnVoucherBlueprint` and `resolveInvoiceContext` learn which sales, tax and round-off ledgers, godown and batch the company really uses from its own vouchers, and ask the owner when it cannot decide. |
-| **Protect Tally** | `TallyGate`: one request in flight, writes before reads, measured timeouts, circuit breaker, light health probe. Never sends the wildcard fetch that hangs Tally. |
-| **Detect changes cheaply** | AlterID/month-window voucher index and diff, instead of re-reading the company. |
-| **Find the data folder** | `findTallyDataPaths` locates company folders on any drive (C:, D:, E:, removable), from Tally's own config and logs, without ever opening data files. |
-| **Survive failure** | Durable `JobQueue` with leases and fencing (a crash mid-post is *verified*, never blindly retried), `CircuitBreaker`, backoff with jitter, `SseParser`, `ResourceGuard`, signed rule packs, adaptive timeouts and batch sizes. |
-| **Mirror and report** | Zero-dependency SQLite mirror (`node:sqlite`) of masters and vouchers; GSTR-1, GSTR-3B, MSME 43B(h), P&L, Balance Sheet, registers, ageing. |
-| **Typed** | 808 Tally XML tags as TypeScript types, Zod schemas, no `any` in the public model. |
+| **What it is** | TypeScript/Node.js SDK for the **Tally XML/TDL HTTP gateway** (port 9000): typed client, GST invoice posting, sync engine, SQLite mirror, reports |
+| **Works with** | **TallyPrime** (developed and live-tested on release 7.1) and **Tally ERP 9** (legacy XML interface; not live-verified in this release) |
+| **Typical use cases** | Billing/POS to Tally sync, **e-commerce to Tally**, CRM/ERP to Tally, WhatsApp/mobile invoicing, Tally data to a web dashboard or data warehouse, GST return preparation |
+| **Direction** | Two-way: **Tally to app** (masters, vouchers, change detection) and **app to Tally** (sales invoices, receipts) |
+| **Safety model** | Idempotent GUID posting, balance check before send, read-back verification, circuit breaker, single-flight gateway, no silent master creation |
+| **Runtime** | Node.js 22+ (uses built-in `node:sqlite`), ESM, fully typed, **no native dependencies** |
+| **Licence** | MIT |
+
+## What it does
+
+| Capability | Details |
+|---|---|
+| **Post GST sales invoices to Tally** | Integer-paise GST maths (tax-inclusive and tax-exclusive, per-slab or per-line rounding), CGST/SGST/IGST/cess, place of supply, balance validation before anything is sent, **GUID-based idempotency**, read-back verification, classified `TRANSIENT` / `PERMANENT` failures. |
+| **Auto-discover the company's setup** | `discoverCompanyProfile` classifies ledgers by **group ancestry and GST duty head**, never by name; `learnVoucherBlueprint` + `resolveInvoiceContext` learn the sales, tax and round-off ledgers, godown and batch a company really uses from its own vouchers, and ask the owner when unsure. No hardcoded ledger names. |
+| **Protect Tally from overload** | `TallyGate`: one request in flight, write-before-read priorities, measured timeouts, **circuit breaker**, light health probe. Never sends the wildcard fetch that hangs Tally. |
+| **Incremental sync and change detection** | AlterID and month-window **voucher index with diff**, instead of re-reading the whole company. |
+| **Find the Tally data folder** | `findTallyDataPaths` locates company data on any drive (C:, D:, E:, removable) from Tally's own config and logs, without opening data files. |
+| **Fault-tolerant sync engine** | Durable SQLite **`JobQueue`** with leases and fencing (a crash mid-post is *verified*, never blindly retried), dead letter, exponential backoff with jitter, `CircuitBreaker`, bounded `SseParser`, `ResourceGuard`, signed rule packs, adaptive timeouts. |
+| **Local SQLite mirror and analytics** | Zero-dependency mirror (`node:sqlite`) of masters and vouchers; **GSTR-1, GSTR-3B, MSME 43B(h)** compliance, **Profit & Loss, Balance Sheet**, registers, debtors/creditors ageing. |
+| **Typed end to end** | **808 Tally XML tags** as TypeScript types, Zod runtime schemas, no `any` in the public model. |
 
 ## Verified, and what is not
 
-Developed against **TallyPrime 7.1** with a real company: profile discovery, ledger-role classification, blueprint learning from ~300 live vouchers, data-path discovery, voucher index and capability detection were run read-only against it. Everything else (the import paths, alteration, cancellation, Auto Renumber with an omitted number, e-invoice) is covered by unit tests against a fake Tally and should be validated on an **isolated test company** before you trust it with a live one. The library never writes unless you call a posting function, and the test suite never touches a real company.
+Developed against **TallyPrime 7.1** with a real company: profile discovery, ledger-role classification, blueprint learning from ~300 live vouchers, data-path discovery, voucher index and capability detection were run read-only against it. Everything else (import paths, alteration, cancellation, Auto Renumber with an omitted number, e-invoice) is covered by unit tests against a fake Tally and should be validated on an **isolated test company** before you trust it with a live one. The library never writes unless you call a posting function, and the test suite never touches a real company. **Tally ERP 9** is Tally Solutions' legacy product; its XML interface is similar, but this release does not claim live verification on it.
 
 ---
 
@@ -408,6 +418,34 @@ TALLY_LIVE_URL=http://127.0.0.1:9000 npm run test:live   # read-only; never writ
 
 ---
 
+## Frequently asked questions
+
+**How do I integrate Tally with my own software (Node.js / TypeScript)?**
+Run Tally with its XML/HTTP gateway enabled (default port 9000), install `tally-sync-ts`, create a `TallyClient` behind a `TallyGate`, and use the posting and sync functions shown in [Posting a Sales Invoice](#7-posting-a-sales-invoice-recommended-flow). Run the integration on the same PC as Tally.
+
+**How do I push invoices to Tally without creating duplicates?**
+Give each invoice a stable `idempotencyKey` (for example your sale id). It becomes the voucher GUID; before importing, the library checks whether that GUID already exists in Tally, and after importing it reads the voucher back to verify the amount. Replaying the same invoice is safe.
+
+**Does it support GST (CGST, SGST, IGST, cess)?**
+Yes. Tax is computed in integer paise for tax-inclusive and tax-exclusive bills, with inter-state vs intra-state decided from the company's own state and the place of supply. It also produces **GSTR-1** (B2B, HSN summary) and **GSTR-3B** summaries from mirrored data.
+
+**Does it work with TallyPrime and Tally ERP 9?**
+It is developed and live-tested on **TallyPrime 7.1**. The release is detected from the gateway reply. Tally ERP 9 uses a similar XML interface but is not live-verified in this release.
+
+**Can it create missing customers, ledgers or items in Tally?**
+Not silently. A missing master is reported (`planSalesInvoiceMasters`) so your app can ask the user to create or link it. This is deliberate: silent master creation pollutes a company's books.
+
+**Why does my Tally hang or stop responding when I call it from code?**
+The XML gateway is single-threaded and keeps working on requests the client abandoned. `TallyGate` serialises requests, applies timeouts and a circuit breaker, and the library never sends the wildcard fetch on Company that is known to hang TallyPrime.
+
+**Can I use it with ODBC, TDL or Tally's JSON interface?**
+This library uses the **XML/TDL HTTP interface**. ODBC and native JSON are not used.
+
+**Is there a hosted or enterprise version?**
+Yes. See [Full solutions & custom builds](#full-solutions--custom-builds).
+
+---
+
 ## Full solutions & custom builds
 
 `tally-sync-ts` is one part of a larger product. If you want the finished system rather than building it yourself, get in touch:
@@ -416,7 +454,9 @@ TALLY_LIVE_URL=http://127.0.0.1:9000 npm run test:live   # read-only; never writ
 - **Integration**: connect Tally to your own software, ERP, e-commerce or WhatsApp flows.
 - **Custom builds**: dashboards, reports, mobile and web apps, automation and anything else your business needs, designed around how you actually work.
 
-**Contact:** open a conversation with the author on GitHub, [@GreenHacker420](https://github.com/GreenHacker420) (issues and discussions on this repository are read too: <https://github.com/GreenHacker420/tally-sync-ts/issues>). Mention "ShopControl" or "custom build" and a rough description of what you need.
+**Contact:** **harsh@greenhacker.tech** or [@GreenHacker420](https://github.com/GreenHacker420) on GitHub (issues on this repository are read too). Mention "ShopControl", "enterprise" or "custom build" and a rough description of what you need.
+
+> **Looking for the older FinSync360 / `Tally_sync` project?** It was an early prototype (Tally ERP 9 era), is no longer maintained and is superseded by this library and the ShopControl solution: <https://github.com/GreenHacker420/Tally_sync>.
 
 ---
 
