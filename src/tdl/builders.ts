@@ -52,6 +52,9 @@ export function buildExportCollectionXml(
         "OpeningBalance", "OpeningRate", "OpeningValue",
         "GstApplicable", "GstTypeOfSupply", "GstDetails.List", "HsnDetails.List"
       ];
+    } else if (colLower === "company") {
+      // Never "*": on TallyPrime 7.1 a wildcard fetch of the Company object stops Tally answering XML (live incident).
+      fetchList = ["Name", "GUID", "MasterId", "AlterId", "CompanyNumber", "StartingFrom", "BooksFrom", "StateName"];
     } else if (colLower === "ledger") {
       fetchList = [
         "MasterId", "*", "CanDelete",
@@ -63,6 +66,7 @@ export function buildExportCollectionXml(
     }
   }
 
+  if (collectionType.toLowerCase() === "company") fetchList = fetchList.filter((f) => f.trim() !== "*");
   const fetchTags = fetchList.map(f => `<FETCH>${escapeXmlText(f)}</FETCH>`).join("\n        ");
 
   const systemFilters = options.filters

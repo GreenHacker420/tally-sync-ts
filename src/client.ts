@@ -1,5 +1,6 @@
 import { formatDateForTally } from "./xml/values.js";
 import { escapeXmlText } from "./xml/escaping.js";
+import { TallyReader, asArray } from "./xml/reader.js";
 import {
   buildExportCollectionXml,
   buildPostXml,
@@ -14,6 +15,7 @@ import {
 import {
   parseExportCollection,
   parsePostResponse,
+  parseFunctionReply,
   parseCountResponse,
   parseMasterStatistics,
   parseVoucherStatistics,
@@ -79,6 +81,15 @@ export interface TallyClientOptions {
   timeout?: number;
   company?: string;
   transport?: TallyTransport;
+}
+
+export interface TallyCapabilities {
+  product: "TALLYPRIME" | "UNKNOWN";
+  release?: { major: number; minor: number };
+  companyLoaded: boolean;
+  activeCompany?: string;
+  gstTagSet: "PRIME_3_PLUS" | "LEGACY";
+  defaultNumbering: "AUTOMATIC_RETAIN" | "UNKNOWN";
 }
 
 export class TallyClient {
@@ -231,19 +242,45 @@ export class TallyClient {
     return this.postObjects("StockItem", items, options);
   }
 
-  public async getActiveCompany(): Promise<string> {
-    const xml = `<ENVELOPE>
+  private functionRequest(functionId: string): string {
+    return `<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Data</TYPE>
-    <ID>$$CurrentCompany</ID>
+    <TALLYREQUEST>EXPORT</TALLYREQUEST>
+    <TYPE>FUNCTION</TYPE>
+    <ID>${escapeXmlText(functionId)}</ID>
   </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+    </DESC>
+  </BODY>
 </ENVELOPE>`;
-    const resp = await this.sendRequest(xml, "Get Active Company");
-    const parsed = parseRawXml(resp);
-    const body = parsed?.ENVELOPE?.BODY?.DATA as unknown as string;
-    return String(body || "").trim();
+  }
+
+  /** The loaded company's name. Verified against TallyPrime 7.1; a bare function request needs the BODY/DESC wrapper. */
+  public async getActiveCompany(): Promise<string> {
+    const reply = parseFunctionReply(await this.sendRequest(this.functionRequest("$$CurrentSimpleCompany"), "Get Active Company"));
+    return reply.ok ? (reply.result ?? "") : "";
+  }
+
+  /**
+   * Detect what this Tally is, using only the release numbers Tally puts in every reply header
+   * (no TDL, so it cannot trigger a dialog). Builders pick their tag set from this.
+   */
+  public async detectCapabilities(): Promise<TallyCapabilities> {
+    const reply = parseFunctionReply(await this.sendRequest(this.functionRequest("$$CurrentSimpleCompany"), "Detect Capabilities"));
+    const release = reply.release;
+    return {
+      product: release ? "TALLYPRIME" : "UNKNOWN",
+      release,
+      companyLoaded: reply.ok && !!reply.result,
+      activeCompany: reply.ok ? reply.result : undefined,
+      gstTagSet: release && release.major >= 3 ? "PRIME_3_PLUS" : "LEGACY",
+      defaultNumbering: release && release.major >= 3 ? "AUTOMATIC_RETAIN" : "UNKNOWN",
+    };
   }
 
   /**
@@ -278,6 +315,45 @@ export class TallyClient {
     return all;
   }
 
+  /**
+   * Loaded companies with the folder number Tally keeps their data in (e.g. 100003). Named fields only: a wildcard
+   * fetch of the Company object is unsafe on TallyPrime 7.1. Verified live: 0.16 s.
+   */
+  public async getLoadedCompanies(): Promise<Array<{ name: string; guid: string; number: string }>> {
+    const reqXml = buildExportCollectionXml("Company", { fetchList: ["Name", "GUID", "CompanyNumber"] });
+    const respXml = this.transport instanceof TallyGate
+      ? await this.transport.sendWithPriority(reqXml, "Loaded companies", GatePriority.LIGHT_READ)
+      : await this.sendRequest(reqXml, "Loaded companies");
+    const error = checkTallyError(respXml);
+    if (error) throw new Error(`Tally error reading companies: ${error}`);
+    const root = parseRawXml(respXml);
+    const col = (root.ENVELOPE?.BODY?.DATA?.COLLECTION ?? {}) as Record<string, unknown>;
+    const out: Array<{ name: string; guid: string; number: string }> = [];
+    for (const node of asArray(col.COMPANY)) {
+      const r = new TallyReader(node as Record<string, unknown>);
+      const number = r.text("COMPANYNUMBER"); const guid = r.text("GUID");
+      const name = r.text("NAME") ?? r.attr("NAME");
+      if (name && guid && number) out.push({ name, guid, number });
+    }
+    return out;
+  }
+
+  /** True when Tally answers and a company is loaded; never throws. */
+  public async check(): Promise<boolean> {
+    try {
+      return (await this.getActiveCompany()).length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * @deprecated EXPERIMENTAL - do not use against a real Tally. It sends a custom TDL report (and references
+   * `$$TC_GetBooleanFromLogicField`, which this request never defines). A live TallyPrime 7.1 stopped answering XML
+   * after such requests until restarted; the real cause is NOT proven: that company's tally.ini has
+   * `Ignore Tcp Timeout=Yes` (Tally keeps executing a request after the client times out, so abandoned heavy requests
+   * queue up) and its tallyerr.log shows repeated c0000005 crashes. Use detectCapabilities() instead.
+   */
   public async getLicenseInfo(): Promise<LicenseInfo> {
     // Fixed: query IsSilver and IsGold instead of IsAdmin!
     const xml = `<ENVELOPE>

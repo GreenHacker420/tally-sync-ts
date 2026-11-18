@@ -461,3 +461,30 @@ export function parseLastAlterIds(xml: string): { mastersLastId: number; voucher
     vouchersLastId: r.number("VOUCHERSLASTID") ?? 0,
   };
 }
+
+export interface FunctionReply {
+  ok: boolean;
+  /** The function's value (e.g. the active company); absent when Tally returned an error body. */
+  result?: string;
+  /** TallyPrime release from the reply header (PRODMAJORREL/PRODMINORREL), e.g. 7.1. */
+  release?: { major: number; minor: number };
+  error?: string;
+}
+
+/** Parse the reply to an `Export / FUNCTION` request. STATUS 0 (e.g. "DESC not found") is an error, never a value. */
+export function parseFunctionReply(xml: string): FunctionReply {
+  const root = parseRawXml(xml);
+  const env = root.ENVELOPE;
+  if (!env) return { ok: false, error: "Unrecognised Tally reply (no ENVELOPE)" };
+  const header = new TallyReader(env.HEADER);
+  const major = header.number("PRODMAJORREL");
+  const minor = header.number("PRODMINORREL");
+  const release = major !== undefined ? { major, minor: minor ?? 0 } : undefined;
+  const status = header.text("STATUS");
+  const data = asRecord(env.BODY?.DATA);
+  const result = tallyText(data?.RESULT);
+  if (status === "0" || result === undefined) {
+    return { ok: false, release, error: tallyText(env.BODY?.DATA) ?? "Tally returned no result" };
+  }
+  return { ok: true, result, release };
+}
