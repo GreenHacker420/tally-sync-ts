@@ -28,6 +28,16 @@ const defs = [
   { key: "discovery.timeBudgetMs", kind: "int", default: 20_000, unit: "ms", min: 1_000, max: 600_000, description: "Time budget of the drive scan." },
   { key: "sync.windowTargetMs", kind: "int", default: 2_000, unit: "ms", min: 200, max: 30_000, description: "Target duration of one Tally read window; sizes the date window." },
   { key: "sync.msPerVoucherEstimate", kind: "int", default: 7, unit: "ms", min: 1, max: 1_000, description: "Cost model used until real latency is measured (conservative; measured 3-7 ms per voucher)." },
+  { key: "adaptive.timeoutFactor", kind: "int", default: 3, unit: "x p95", min: 1, max: 20, description: "Request timeout as a multiple of the measured p95 latency, once enough samples exist." },
+  { key: "adaptive.minSamples", kind: "int", default: 20, unit: "samples", min: 5, max: 10_000, description: "Latency samples needed before measured values replace the defaults." },
+  { key: "adaptive.timeoutFloorMs", kind: "int", default: 2_000, unit: "ms", min: 200, max: 60_000, description: "Lowest timeout the adaptive control may choose, whatever the latency." },
+  { key: "batch.start", kind: "int", default: 10, unit: "vouchers", min: 1, max: 1_000, description: "Initial vouchers per import batch." },
+  { key: "batch.min", kind: "int", default: 1, unit: "vouchers", min: 1, max: 1_000, description: "Smallest import batch the adaptive control may fall back to." },
+  { key: "batch.max", kind: "int", default: 200, unit: "vouchers", min: 1, max: 5_000, description: "Largest import batch the adaptive control may grow to." },
+  { key: "batch.growBy", kind: "int", default: 5, unit: "vouchers", min: 1, max: 500, description: "Vouchers added to the batch after each fast, successful import (additive increase)." },
+  { key: "batch.shrinkPercent", kind: "int", default: 50, unit: "%", min: 10, max: 90, description: "Percentage of the batch kept after a slow or failed import (multiplicative decrease)." },
+  { key: "retry.transientScheduleSec", kind: "string", default: "5,15,45,120,300,900", unit: "seconds", description: "Comma-separated delays between attempts for transient failures; the last one repeats." },
+  { key: "retry.jitterPercent", kind: "int", default: 20, unit: "%", min: 0, max: 100, description: "Random spread applied to retry delays so many agents do not retry in step." },
 ] as const satisfies readonly PolicyDef[];
 
 export type PolicyKey = (typeof defs)[number]["key"];

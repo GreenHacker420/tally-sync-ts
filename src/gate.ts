@@ -1,3 +1,4 @@
+import { adaptiveTimeoutMs, type DecisionLog, type LatencyTracker, type NumberSource } from "./adaptive/control.js";
 import type { TallyTransport } from "./transport.js";
 import { policyDefault, policyNumber, type ResolvedPolicy } from "./config/policy.js";
 import { TallyCircuitOpenError, TallyTimeoutError, TallyTransportError } from "./errors.js";
@@ -19,6 +20,8 @@ export interface TallyGateOptions {
   probeTimeoutMs?: number;
   /** Hard ceiling per request; Tally is single-threaded and can block on a modal dialog. */
   timeoutMs?: number;
+  /** Optional adaptive control: timeouts follow the measured p95 latency, never above `timeoutMs`. */
+  adaptive?: { latency: LatencyTracker; log?: DecisionLog; num?: NumberSource };
   /** Consecutive timeouts/connection failures before the circuit opens. */
   failureThreshold?: number;
   /** How long the circuit stays open before one probe request is let through. */
@@ -43,6 +46,8 @@ export class TallyGate implements TallyTransport {
   private readonly now: () => number;
   private readonly probeXml: string;
   private readonly probeTimeoutMs: number;
+  private readonly adaptive?: TallyGateOptions["adaptive"];
+  private lastTimeout?: number;
   private queue: Waiter[] = [];
   private busy = false;
   private seq = 0;
@@ -57,6 +62,7 @@ export class TallyGate implements TallyTransport {
     this.now = options.now ?? Date.now;
     this.probeXml = options.probeXml ?? TALLY_LIGHT_PROBE_XML;
     this.probeTimeoutMs = options.probeTimeoutMs ?? policyDefault("gate.probeTimeoutMs");
+    this.adaptive = options.adaptive;
   }
 
   /** Build a gate whose tunables come from resolved policy (so tenant/shop/company layers apply). */
@@ -124,11 +130,15 @@ export class TallyGate implements TallyTransport {
       this.failures = 0;
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = this.adaptive ? adaptiveTimeoutMs(this.adaptive.latency, this.timeoutMs, this.adaptive.num, this.adaptive.log, this.lastTimeout ?? this.timeoutMs) : this.timeoutMs;
+    this.lastTimeout = limit;
+    const startedAt = this.now();
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new TallyTimeoutError(this.timeoutMs, requestType)), this.timeoutMs);
+        timer = setTimeout(() => reject(new TallyTimeoutError(limit, requestType)), limit);
       });
       const result = await Promise.race([this.inner.send(xml, requestType), timeout]);
+      this.adaptive?.latency.add(this.now() - startedAt);
       this.failures = 0;
       this.openedAt = undefined;
       return result;
