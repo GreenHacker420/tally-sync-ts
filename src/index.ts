@@ -102,3 +102,6 @@ export * from "./dialects/environment.js";
 
 // Policy registry: tunables declared once, resolved from layers with provenance
 export * from "./config/policy.js";
+
+// Company profile: facts discovered from Tally (roles by group ancestry and attributes, never by name)
+export * from "./profile/companyProfile.js";
