@@ -8,7 +8,7 @@
 npm install tally-sync-ts
 ```
 
-> **Need the whole product, not just the SDK?** An enterprise-grade, production-ready **ShopControl** solution (billing, stock and GST app, **web, mobile and WhatsApp**, ready **Tally desktop synchroniser**) and **custom builds** are available: see [Full solutions & custom builds](#full-solutions--custom-builds) or write to **harsh@greenhacker.tech**.
+> **Need the whole product, not just the SDK?** An enterprise-grade, production-ready **ShopControl** solution (billing, stock and GST app, **web, mobile and WhatsApp**, ready **Tally desktop synchroniser**) and **custom builds** are available: see [Full solutions & custom builds](#full-solutions--custom-builds) or write to **harsh@greenhacker.in**.
 
 ## Quick facts
 
@@ -454,7 +454,7 @@ Yes. See [Full solutions & custom builds](#full-solutions--custom-builds).
 - **Integration**: connect Tally to your own software, ERP, e-commerce or WhatsApp flows.
 - **Custom builds**: dashboards, reports, mobile and web apps, automation and anything else your business needs, designed around how you actually work.
 
-**Contact:** **harsh@greenhacker.tech** or [@GreenHacker420](https://github.com/GreenHacker420) on GitHub (issues on this repository are read too). Mention "ShopControl", "enterprise" or "custom build" and a rough description of what you need.
+**Contact:** **harsh@greenhacker.in** or [@GreenHacker420](https://github.com/GreenHacker420) on GitHub (issues on this repository are read too). Mention "ShopControl", "enterprise" or "custom build" and a rough description of what you need.
 
 > **Looking for the older FinSync360 / `Tally_sync` project?** It was an early prototype (Tally ERP 9 era), is no longer maintained and is superseded by this library and the ShopControl solution: <https://github.com/GreenHacker420/Tally_sync>.
 
