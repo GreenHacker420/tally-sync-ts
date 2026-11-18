@@ -106,3 +106,4 @@ export * from "./config/policy.js";
 // Company profile: facts discovered from Tally (roles by group ancestry and attributes, never by name)
 export * from "./profile/companyProfile.js";
 export * from "./profile/blueprint.js";
+export * from "./profile/learnedNames.js";

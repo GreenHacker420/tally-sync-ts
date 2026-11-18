@@ -26,6 +26,16 @@ const load = (shapes: Shape[]): unknown[] => {
 };
 
 describe("learnVoucherBlueprint", () => {
+  it("counts an entry once when Tally exports it under both alias tags", () => {
+    const entry = (name: string, amt: number) => `<LEDGERNAME>${name}</LEDGERNAME><AMOUNT>${amt}</AMOUNT>`;
+    const xml = `<ENVELOPE><BODY><DATA><COLLECTION><VOUCHER><ALLLEDGERENTRIES.LIST>${entry("P", -10)}<ISPARTYLEDGER>Yes</ISPARTYLEDGER></ALLLEDGERENTRIES.LIST><LEDGERENTRIES.LIST>${entry("P", -10)}<ISPARTYLEDGER>Yes</ISPARTYLEDGER></LEDGERENTRIES.LIST></VOUCHER></COLLECTION></DATA></BODY></ENVELOPE>`;
+    const v = asArray((parseRawXml(xml) as any).ENVELOPE.BODY.DATA.COLLECTION.VOUCHER);
+    const bp = learnVoucherBlueprint(v);
+    assert.equal(bp.ledgers[0].count, 1);
+    assert.equal(bp.ledgers[0].negativeCount, 1);
+    assert.equal(bp.ledgers[0].firstCount, 1);
+  });
+
   it("reports an empty sample without inventing anything", () => {
     const bp = learnVoucherBlueprint([]);
     assert.equal(bp.sampleSize, 0);

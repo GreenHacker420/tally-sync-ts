@@ -19,18 +19,13 @@ export interface VoucherBlueprint {
   skeleton: PathStat[];
   corePaths: string[];
   ledgers: LedgerUsage[];
-  /** Ledgers used inside inventory lines (the sales/purchase ledger of each item line). */
   lineLedgers: NameStat[];
   godowns: NameStat[];
   batches: NameStat[];
-  /** Fraction of inventory lines that carry a godown / batch name. */
   lineGodownFraction: number;
   lineBatchFraction: number;
-  /** Fraction of vouchers whose number tag is present and non-empty. */
   numberedFraction: number;
-  /** Fraction of vouchers carrying a bill reference on any ledger entry. */
   billReferenceFraction: number;
-  /** Fraction of vouchers whose first ledger entry is the party ledger. */
   partyFirstFraction: number;
 }
 
@@ -57,15 +52,29 @@ const isNode = (v: unknown): v is Node => !!v && typeof v === "object" && !Array
 const attr = (k: string): boolean => k.startsWith("@_") || k.startsWith("?") || k === "#text";
 const get = (n: Node, tag: string): unknown => { for (const k of Object.keys(n)) if (k.toUpperCase() === tag) return n[k]; return undefined; };
 const text = (n: Node, tag: string): string => { const v = get(n, tag); return v === undefined ? "" : (tallyText(v) ?? "").trim(); };
-const lists = (n: Node, tags: readonly string[]): Node[] => tags.flatMap((t) => asArray(get(n, t)).filter(isNode));
+/**
+ * Tally exports the same entries under alias tags (live: ALLLEDGERENTRIES.LIST and LEDGERENTRIES.LIST both
+ * carry every entry), so use the first alias that has entries instead of merging them, or each entry counts twice.
+ */
+const lists = (n: Node, tags: readonly string[]): Node[] => {
+  for (const t of tags) { const found = asArray(get(n, t)).filter(isNode); if (found.length > 0) return found; }
+  return [];
+};
 
-function collectPaths(n: Node, prefix: string, out: Set<string>): void {
+/** Adds every path that carries a value (directly or through a child). Tally exports hundreds of empty template tags; those are not habits. */
+function collectPaths(n: Node, prefix: string, out: Set<string>): boolean {
+  let any = false;
   for (const [k, v] of Object.entries(n)) {
     if (attr(k)) continue;
     const p = prefix ? `${prefix}/${k.toUpperCase()}` : k.toUpperCase();
-    out.add(p);
-    for (const child of asArray(v)) if (isNode(child)) collectPaths(child, p, out);
+    let filled = false;
+    for (const child of asArray(v)) {
+      if (isNode(child)) { if (collectPaths(child, p, out)) filled = true; }
+      else if ((tallyText(child) ?? "").trim() !== "") filled = true;
+    }
+    if (filled) { out.add(p); any = true; }
   }
+  return any;
 }
 
 const rank = <T extends { count: number; name: string }>(rows: T[]): T[] => rows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));

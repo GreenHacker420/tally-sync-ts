@@ -1,6 +1,7 @@
 import { formatDateForTally } from "./xml/values.js";
 import { escapeXmlText } from "./xml/escaping.js";
 import { TallyReader, asArray } from "./xml/reader.js";
+import { tallyText } from "./xml/values.js";
 import {
   buildExportCollectionXml,
   buildPostXml,
@@ -32,6 +33,7 @@ import { TallyObjectType, TallyObjectMap } from "./schema/registry.js";
 import { FetchTallyTransport, TallyTransport } from "./transport.js";
 import { GatePriority, TallyGate } from "./gate.js";
 import { tdlStringLiteral } from "./tdl/filters.js";
+import { VOUCHER_FETCH_PROFILES } from "./tdl/profiles.js";
 import { parseVoucherIndex, monthWindows, type VoucherIndexRow, type DateWindow } from "./voucherIndex.js";
 export { FetchTallyTransport as HttpTransport };
 import { Voucher } from "./schema/transactions/types.js";
@@ -303,6 +305,31 @@ export class TallyClient {
     const error = checkTallyError(respXml);
     if (error) throw new Error(`Tally error reading voucher index: ${error}`);
     return parseVoucherIndex(respXml);
+  }
+
+  /**
+   * Whole vouchers (raw parsed objects) for one date window, optionally one voucher type. Used by the blueprint
+   * learner. Keep windows to a month; sent at HEAVY_READ priority when gated.
+   */
+  public async getRawVoucherWindow(window: DateWindow, options: { company?: string; voucherType?: string } = {}): Promise<Record<string, unknown>[]> {
+    const reqXml = buildExportCollectionXml("Voucher", {
+      company: options.company ?? this.defaultCompany,
+      fromDate: window.from,
+      toDate: window.to,
+      collectionType: "Voucher",
+      fetchList: [...VOUCHER_FETCH_PROFILES.full],
+    });
+    const respXml = this.transport instanceof TallyGate
+      ? await this.transport.sendWithPriority(reqXml, `Vouchers ${window.from}-${window.to}`, GatePriority.HEAVY_READ)
+      : await this.sendRequest(reqXml, `Vouchers ${window.from}-${window.to}`);
+    const error = checkTallyError(respXml);
+    if (error) throw new Error(`Tally error reading vouchers: ${error}`);
+    const parsed = parseRawXml(respXml) as { ENVELOPE?: { BODY?: { DATA?: { COLLECTION?: Record<string, unknown> } } } };
+    const col = parsed?.ENVELOPE?.BODY?.DATA?.COLLECTION;
+    const nodes = asArray(col?.VOUCHER).filter((v): v is Record<string, unknown> => !!v && typeof v === "object");
+    if (!options.voucherType) return nodes;
+    const want = options.voucherType.trim().toLowerCase();
+    return nodes.filter((v) => String(tallyText(v.VOUCHERTYPENAME) ?? tallyText((v as Record<string, unknown>)["@_VCHTYPE"]) ?? "").trim().toLowerCase() === want);
   }
 
   /** Month-chunked index of every voucher between two dates (YYYYMMDD). */
