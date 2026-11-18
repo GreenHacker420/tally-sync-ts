@@ -31,6 +31,7 @@ import {
 import { TallyObjectType, TallyObjectMap } from "./schema/registry.js";
 import { FetchTallyTransport, TallyTransport } from "./transport.js";
 import { GatePriority, TallyGate } from "./gate.js";
+import { tdlStringLiteral } from "./tdl/filters.js";
 import { parseVoucherIndex, monthWindows, type VoucherIndexRow, type DateWindow } from "./voucherIndex.js";
 export { FetchTallyTransport as HttpTransport };
 import { Voucher } from "./schema/transactions/types.js";
@@ -313,6 +314,30 @@ export class TallyClient {
       all.push(...rows);
     }
     return all;
+  }
+
+  /** Send a prepared import envelope. Goes first in the gate queue (WRITE priority) so a bill never waits behind a sync read. */
+  public async sendImport(xml: string): Promise<PostResponse[]> {
+    const respXml = this.transport instanceof TallyGate
+      ? await this.transport.sendWithPriority(xml, "Import Vouchers", GatePriority.WRITE)
+      : await this.sendRequest(xml, "Import Vouchers");
+    return parsePostResponse(respXml);
+  }
+
+  /** The voucher with this GUID, or undefined. `window` bounds the scan (Tally only exports the requested period). */
+  public async findVoucherByGuid(guid: string, window: DateWindow, options: { company?: string } = {}): Promise<Voucher | undefined> {
+    const reqXml = buildExportCollectionXml("Voucher", {
+      company: options.company ?? this.defaultCompany,
+      fromDate: window.from,
+      toDate: window.to,
+      filters: [{ name: "TC_ByGuid", formula: `$GUID = ${tdlStringLiteral(guid)}` }],
+    });
+    const respXml = this.transport instanceof TallyGate
+      ? await this.transport.sendWithPriority(reqXml, "Find voucher by GUID", GatePriority.LIGHT_READ)
+      : await this.sendRequest(reqXml, "Find voucher by GUID");
+    const error = checkTallyError(respXml);
+    if (error) throw new Error(`Tally error finding voucher: ${error}`);
+    return parseExportCollection<Voucher>(respXml, "Voucher")[0];
   }
 
   /**
