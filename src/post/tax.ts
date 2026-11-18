@@ -1,4 +1,5 @@
 import { assertPaise, divRoundHalfUp, type Paise } from "./money.js";
+import { TALLY_PRIME_DIALECT } from "../dialects/tally.js";
 
 export const TaxMode = { INCLUSIVE: "INCLUSIVE", EXCLUSIVE: "EXCLUSIVE" } as const;
 export type TaxMode = (typeof TaxMode)[keyof typeof TaxMode];
@@ -59,7 +60,7 @@ export interface TaxResult {
 }
 
 const BP = 10_000;
-const NON_TAXABLE = /^(exempt|nil.?rated|non.?gst)$/i;
+const NON_TAXABLE = TALLY_PRIME_DIALECT.nonTaxablePattern;
 
 function effective(gst: LineGst, interState: boolean) {
   if (NON_TAXABLE.test(gst.taxability)) return { cgst: 0, sgst: 0, igst: 0, cess: 0 };

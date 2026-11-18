@@ -1,5 +1,6 @@
 import { escapeXmlText } from "../xml/escaping.js";
 import { paiseToTally, assertPaise, type Paise } from "./money.js";
+import { TALLY_PRIME_DIALECT as D } from "../dialects/tally.js";
 import { computeInvoiceTax, TaxMode, RoundingStrategy, type LineGst, type TaxResult } from "./tax.js";
 
 export interface PartySnapshot {
@@ -8,6 +9,8 @@ export interface PartySnapshot {
   stateName?: string;
   addressLines?: string[];
   registrationType?: "Regular" | "Unregistered" | "Consumer" | "Composition";
+  /** Country of residence; the tag is omitted when unknown (discovered from the company profile, never defaulted). */
+  country?: string;
   /** Only parties maintained bill-by-bill in Tally take a New Ref allocation (read it from the master catalog; in the live company 193 of 215 debtors are bill-wise). */
   isBillWise?: boolean;
 }
@@ -47,6 +50,7 @@ export interface SalesInvoiceInput {
   narration?: string;
   /** Omit to let Tally number it (numbering style is "Auto Renumber" in the live company; voucher numbers are not identity). */
   voucherNumber?: string;
+  /** Voucher type to post as; defaults to the dialect's reserved Sales type. */
   voucherTypeName?: string;
   party: PartySnapshot;
   placeOfSupply: string;
@@ -57,8 +61,6 @@ export interface SalesInvoiceInput {
   roundTotalToRupee?: boolean;
   rounding?: RoundingStrategy;
   ledgers: LedgerNames;
-  defaultGodown?: string;
-  defaultBatch?: string;
 }
 
 export interface VoucherEntry {
@@ -124,8 +126,6 @@ export function buildSalesInvoice(input: SalesInvoiceInput): BuiltSalesInvoice {
   const party = input.party;
   const gstin = party.gstin?.trim();
   const regType = party.registrationType ?? (gstin ? "Regular" : "Unregistered");
-  const godown = input.defaultGodown ?? "Main Location";
-  const batch = input.defaultBatch ?? "Primary Batch";
 
   const inventory = input.lines.map((l, i) => {
     const lt = tax.lines[i];
@@ -133,6 +133,15 @@ export function buildSalesInvoice(input: SalesInvoiceInput): BuiltSalesInvoice {
     const rate = `${paiseToTally(Math.round(lt.taxablePaise / Number(l.quantity)))}/${l.unit}`;
     const amt = paiseToTally(lt.taxablePaise);
     const bp = l.gst.basisPoints;
+    // Godown/batch are company/item facts: emitted only when the caller supplies them (from the profile or a learned blueprint).
+    const batchXml = l.godown || l.batch
+      ? `
+        <BATCHALLOCATIONS.LIST>${l.godown ? `\n          <GODOWNNAME>${x(l.godown)}</GODOWNNAME>` : ""}${l.batch ? `\n          <BATCHNAME>${x(l.batch)}</BATCHNAME>` : ""}${l.godown ? `\n          <DESTINATIONGODOWNNAME>${x(l.godown)}</DESTINATIONGODOWNNAME>` : ""}
+          <AMOUNT>${amt}</AMOUNT>
+          <ACTUALQTY> ${x(qty)}</ACTUALQTY>
+          <BILLEDQTY> ${x(qty)}</BILLEDQTY>
+        </BATCHALLOCATIONS.LIST>`
+      : "";
     const head = (name: string, v: number) => `<RATEDETAILS.LIST><GSTRATEDUTYHEAD>${name}</GSTRATEDUTYHEAD><GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE><GSTRATE>${(v / 100).toString()}</GSTRATE></RATEDETAILS.LIST>`;
     return `
       <ALLINVENTORYENTRIES.LIST>
@@ -147,21 +156,13 @@ export function buildSalesInvoice(input: SalesInvoiceInput): BuiltSalesInvoice {
         <AMOUNT>${amt}</AMOUNT>
         <ACTUALQTY> ${x(qty)}</ACTUALQTY>
         <BILLEDQTY> ${x(qty)}</BILLEDQTY>
-        ${head("Central Tax", bp.cgst)}${head("State Tax", bp.sgst)}${head("Integrated Tax", bp.igst)}
+        ${head(D.importDutyHeads.cgst, bp.cgst)}${head(D.importDutyHeads.sgst, bp.sgst)}${head(D.importDutyHeads.igst, bp.igst)}
         <ACCOUNTINGALLOCATIONS.LIST>
           <LEDGERNAME>${x(input.ledgers.sales)}</LEDGERNAME>
           <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
           <AMOUNT>${amt}</AMOUNT>
         </ACCOUNTINGALLOCATIONS.LIST>
-        <BATCHALLOCATIONS.LIST>
-          <GODOWNNAME>${x(l.godown ?? godown)}</GODOWNNAME>
-          <BATCHNAME>${x(l.batch ?? batch)}</BATCHNAME>
-          <DESTINATIONGODOWNNAME>${x(l.godown ?? godown)}</DESTINATIONGODOWNNAME>
-          <AMOUNT>${amt}</AMOUNT>
-          <ACTUALQTY> ${x(qty)}</ACTUALQTY>
-          <BILLEDQTY> ${x(qty)}</BILLEDQTY>
-        </BATCHALLOCATIONS.LIST>
-      </ALLINVENTORYENTRIES.LIST>`;
+${batchXml}      </ALLINVENTORYENTRIES.LIST>`;
   }).join("");
 
   const ledgerEntry = (e: VoucherEntry, isParty: boolean) => {
@@ -182,11 +183,11 @@ export function buildSalesInvoice(input: SalesInvoiceInput): BuiltSalesInvoice {
     ? `\n      <ADDRESS.LIST TYPE="String">${addr.map((a) => `<ADDRESS>${x(a)}</ADDRESS>`).join("")}</ADDRESS.LIST>\n      <BASICBUYERADDRESS.LIST TYPE="String">${addr.map((a) => `<BASICBUYERADDRESS>${x(a)}</BASICBUYERADDRESS>`).join("")}</BASICBUYERADDRESS.LIST>`
     : "";
 
-  const xml = `<VOUCHER REMOTEID="${x(guid)}" VCHTYPE="${x(input.voucherTypeName ?? "Sales")}" ACTION="Create" OBJVIEW="Invoice Voucher View">
+  const xml = `<VOUCHER REMOTEID="${x(guid)}" VCHTYPE="${x(input.voucherTypeName ?? D.voucherTypes.sales)}" ACTION="Create" OBJVIEW="Invoice Voucher View">
       <GUID>${x(guid)}</GUID>
       <DATE>${input.date}</DATE>
       <EFFECTIVEDATE>${input.date}</EFFECTIVEDATE>
-      <VOUCHERTYPENAME>${x(input.voucherTypeName ?? "Sales")}</VOUCHERTYPENAME>${input.voucherNumber ? `\n      <VOUCHERNUMBER>${x(input.voucherNumber)}</VOUCHERNUMBER>` : ""}${input.reference ? `\n      <REFERENCE>${x(input.reference)}</REFERENCE>` : ""}${input.narration ? `\n      <NARRATION>${x(input.narration)}</NARRATION>` : ""}
+      <VOUCHERTYPENAME>${x(input.voucherTypeName ?? D.voucherTypes.sales)}</VOUCHERTYPENAME>${input.voucherNumber ? `\n      <VOUCHERNUMBER>${x(input.voucherNumber)}</VOUCHERNUMBER>` : ""}${input.reference ? `\n      <REFERENCE>${x(input.reference)}</REFERENCE>` : ""}${input.narration ? `\n      <NARRATION>${x(input.narration)}</NARRATION>` : ""}
       <ISINVOICE>Yes</ISINVOICE>
       <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
       <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
@@ -194,9 +195,8 @@ export function buildSalesInvoice(input: SalesInvoiceInput): BuiltSalesInvoice {
       <PARTYNAME>${x(party.name)}</PARTYNAME>
       <PARTYLEDGERNAME>${x(party.name)}</PARTYLEDGERNAME>
       <BASICBUYERNAME>${x(party.name)}</BASICBUYERNAME>${gstin ? `\n      <PARTYGSTIN>${x(gstin)}</PARTYGSTIN>` : ""}
-      <GSTREGISTRATIONTYPE>${regType}</GSTREGISTRATIONTYPE>
+      <GSTREGISTRATIONTYPE>${regType}</GSTREGISTRATIONTYPE>${party.country ? `\n      <COUNTRYOFRESIDENCE>${x(party.country)}</COUNTRYOFRESIDENCE>` : ""}
       <STATENAME>${x(party.stateName ?? input.placeOfSupply)}</STATENAME>
-      <COUNTRYOFRESIDENCE>India</COUNTRYOFRESIDENCE>
       <PLACEOFSUPPLY>${x(input.placeOfSupply)}</PLACEOFSUPPLY>${addressXml}${ledgerEntry(entries[0], true)}${inventory}${entries.slice(1).map((e) => ledgerEntry(e, false)).join("")}
     </VOUCHER>`;
 

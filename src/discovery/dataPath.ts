@@ -77,7 +77,11 @@ export interface DataPathReport {
   scan: { performed: boolean; complete: boolean; visitedDirs: number; durationMs: number };
 }
 
+import { WINDOWS_FINDER_ENVIRONMENT, type FinderEnvironment } from "../dialects/environment.js";
+
 export interface FindOptions {
+  /** Environment data (skip lists, default roots, log names); defaults to the Windows profile. */
+  environment?: FinderEnvironment;
   fs: FsPort;
   installDir?: string;
   /** Folder numbers of the companies Tally says are loaded (`CompanyNumber`). */
@@ -175,15 +179,8 @@ export function looksLikeCompanyFolder(names: readonly string[]): { isCompany: b
 }
 
 // ---- finder -------------------------------------------------------------------------------------
-const SKIP_DIRS = new Set(["windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information", "recovery", "msocache", "perflogs", "node_modules", ".git", "windows.old", "appdata", "intel", "nvidia", "amd", "$windows.~bt", "config.msi"]);
-const BACKUP_HINT = /backup|bak\b|\bcopy\b|old|restore|archive|temp|tmp|recycle/i;
-const DEFAULT_ROOTS = (install?: string): string[] => [
-  ...(install ? [join(install, "Data")] : []),
-  "C:\\Users\\Public\\TallyPrime\\Data",
-  "C:\\Users\\Public\\TallyPrimeData\\Data",
-  "C:\\Users\\Public\\Tally.ERP9\\Data",
-];
-const LOG_NAMES = ["tallyerr.log", "tdlfunc.log", "tallyhttp.log", "exchangetime.log", "tally.imp"];
+const resolveRoots = (env: FinderEnvironment, install?: string): string[] =>
+  env.defaultRoots.filter((r) => install || !r.startsWith("{install}")).map((r) => (install ? r.replace("{install}", install.replace(/\\+$/, "")) : r));
 
 async function inspectFolder(fs: FsPort, path: string): Promise<{ verified: boolean; signature: string[]; sizeBytes: number; lastModifiedMs: number; watchFiles: string[] }> {
   const entries = await fs.readdir(path);
@@ -205,6 +202,7 @@ async function inspectFolder(fs: FsPort, path: string): Promise<{ verified: bool
 
 export async function findTallyDataPaths(opts: FindOptions): Promise<DataPathReport> {
   const { fs, installDir } = opts;
+  const env = opts.environment ?? WINDOWS_FINDER_ENVIRONMENT;
   const now = opts.now ?? Date.now;
   const started = now();
   const evidence: string[] = [];
@@ -219,7 +217,7 @@ export async function findTallyDataPaths(opts: FindOptions): Promise<DataPathRep
     if (existing) { if (!existing.sources.includes(source)) existing.sources.push(source); return existing.verified; }
     const info = await inspectFolder(fs, path);
     if (!info.verified) { evidence.push(`${source}: ${path} - folder not found or not a Tally company folder`); return false; }
-    found.set(k, { number, path, root: normWinPath(root), verified: true, reportedByTally: wanted.has(number), sources: [source], confidence: "MEDIUM", looksLikeBackup: BACKUP_HINT.test(path), signature: info.signature, sizeBytes: info.sizeBytes, lastModifiedMs: info.lastModifiedMs, watchFiles: info.watchFiles });
+    found.set(k, { number, path, root: normWinPath(root), verified: true, reportedByTally: wanted.has(number), sources: [source], confidence: "MEDIUM", looksLikeBackup: env.backupHint.test(path), signature: info.signature, sizeBytes: info.sizeBytes, lastModifiedMs: info.lastModifiedMs, watchFiles: info.watchFiles });
     roots.set(key(root), normWinPath(root));
     evidence.push(`${source}: ${path} verified (${info.signature.join(", ")})`);
     return true;
@@ -244,7 +242,7 @@ export async function findTallyDataPaths(opts: FindOptions): Promise<DataPathRep
   }
 
   // 3: logs
-  const logNames = [...LOG_NAMES, ...(opts.extraLogNames ?? [])];
+  const logNames = [...env.logNames, ...(opts.extraLogNames ?? [])];
   if (installDir) {
     for (const name of logNames) {
       const text = await fs.readText(join(installDir, name));
@@ -256,7 +254,7 @@ export async function findTallyDataPaths(opts: FindOptions): Promise<DataPathRep
   // 4: defaults
   const unresolvedNow = () => [...wanted].filter((n) => ![...found.values()].some((c) => c.number === n));
   if (wanted.size === 0 || unresolvedNow().length) {
-    for (const root of DEFAULT_ROOTS(installDir)) {
+    for (const root of resolveRoots(env, installDir)) {
       const entries = await fs.readdir(root);
       if (!entries) continue;
       for (const e of entries) if (e.isDir && COMPANY_NUMBER.test(e.name) && (!wanted.size || wanted.has(e.name))) await addCandidate(root, e.name, DataPathSource.DEFAULT);
@@ -283,7 +281,7 @@ export async function findTallyDataPaths(opts: FindOptions): Promise<DataPathRep
       for (const e of entries) {
         if (!e.isDir) continue;
         const lower = e.name.toLowerCase();
-        if (SKIP_DIRS.has(lower)) continue;
+        if (env.skipDirs.has(lower)) continue;
         if (COMPANY_NUMBER.test(e.name)) {
           if (!wanted.size || wanted.has(e.name) || deepScan) await addCandidate(path.length === 2 ? `${path}\\` : path, e.name, DataPathSource.SCAN);
           continue;

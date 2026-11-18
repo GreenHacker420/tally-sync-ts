@@ -1,4 +1,5 @@
 import { TallyReader } from "../xml/reader.js";
+import { TALLY_PRIME_DIALECT, type TallyDialect } from "../dialects/tally.js";
 
 /** GST rates in percent, per duty head. A head that Tally marks "Not Applicable" is simply absent. */
 export interface GstRates {
@@ -27,15 +28,9 @@ export interface HsnDetailEntry {
   sourceOfDetails?: string;
 }
 
-/** Tally exports duty heads as CGST / SGST/UTGST / IGST; its import docs use Central Tax / State Tax / Integrated Tax. */
-export function normaliseDutyHead(head: string): keyof GstRates | undefined {
-  const h = head.trim().toLowerCase();
-  if (h === "cgst" || h === "central tax") return "cgst";
-  if (h === "sgst/utgst" || h === "sgst" || h === "state tax" || h === "utgst") return "sgst";
-  if (h === "igst" || h === "integrated tax") return "igst";
-  if (h === "cess") return "cess";
-  if (h === "state cess") return "stateCess";
-  return undefined;
+/** Both export and import spellings are listed in the dialect; unknown heads return undefined. */
+export function normaliseDutyHead(head: string, dialect: TallyDialect = TALLY_PRIME_DIALECT): keyof GstRates | undefined {
+  return dialect.dutyHeadAliases[head.trim().toLowerCase()];
 }
 
 const ANY_STATE = "Any";

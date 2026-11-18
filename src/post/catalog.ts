@@ -1,5 +1,6 @@
 import type { TallyClient } from "../client.js";
 import type { SalesInvoiceInput } from "./salesInvoice.js";
+import { TALLY_PRIME_DIALECT } from "../dialects/tally.js";
 
 export interface LedgerFacts {
   name: string;
@@ -68,7 +69,11 @@ export interface PlanExpectations {
   partyGroups: readonly string[];
 }
 
-export const DEFAULT_GROUPS: PlanExpectations = { salesGroup: "Sales Accounts", taxGroup: "Duties & Taxes", partyGroups: ["Sundry Debtors", "Cash-in-Hand", "Bank Accounts"] };
+export const DEFAULT_GROUPS: PlanExpectations = {
+  salesGroup: TALLY_PRIME_DIALECT.reservedGroups.sales,
+  taxGroup: TALLY_PRIME_DIALECT.reservedGroups.dutiesTaxes,
+  partyGroups: [TALLY_PRIME_DIALECT.reservedGroups.debtors, TALLY_PRIME_DIALECT.reservedGroups.cash, TALLY_PRIME_DIALECT.reservedGroups.bank],
+};
 
 /** Pure pre-flight: what is missing or in the wrong group in the target Tally for this invoice. */
 export function planSalesInvoiceMasters(input: SalesInvoiceInput, catalog: MasterCatalog, expect: PlanExpectations = DEFAULT_GROUPS, taxLedgerNames: readonly string[] = []): MasterPlan {

@@ -95,3 +95,7 @@ export * from "./post/catalog.js";
 
 // Tally data-path finder (where the company folders live; metadata only, never opens data files)
 export * from "./discovery/dataPath.js";
+
+// Dialects: Tally protocol facts and environment data as data (no vocabulary in engine code)
+export * from "./dialects/tally.js";
+export * from "./dialects/environment.js";
