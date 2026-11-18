@@ -221,6 +221,9 @@ export class TallySqliteSyncEngine {
 
           // Ledger entries
           delLedStmt.run(guid);
+          // Clear allocations once per voucher, before iterating entries (deleting inside the loop
+          // would wipe allocations already inserted for earlier ledger entries).
+          delBillStmt.run(guid);
           if (v.ledgerEntries) {
             for (const le of v.ledgerEntries) {
               const leAmt = typeof le.amount === "object" ? le.amount.value : (le.amount ?? 0);
@@ -228,7 +231,6 @@ export class TallySqliteSyncEngine {
 
               // Bill allocations
               if (le.billAllocations) {
-                delBillStmt.run(guid);
                 for (const b of le.billAllocations) {
                   const bAmt = typeof b.amount === "object" ? b.amount.value : (b.amount ?? 0);
                   const bDueDate = b.dueDate ? (typeof b.dueDate === "string" ? b.dueDate : (b.dueDate as Date).toISOString().slice(0, 10)) : null;
