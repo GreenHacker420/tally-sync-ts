@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.0 — resilience
+- `JobQueue` (SQLite): leases with fencing tokens, crash recovery that turns a mid-post lease into VERIFYING (never a blind retry), bounded retries with backoff and a dead letter, waiting-for-master that does not consume attempts, essential vs sheddable jobs, in-place schema upgrade, prune, stats.
+- `CircuitBreaker` (rolling window, single probe, only availability failures count), `backoffMs`, `SseParser` (state across chunks, bounded buffer), `ResourceGuard` (heap, disk, event-loop delay: shed background work, never posting).
+- 19 new policy keys (retry, queue, cloud, sse, reconnect, sync, resource).
+
 ## 2.2.0
 - `wrapVoucherImport` / `PostOptions.credentials`: send `SVUSERNAME`/`SVPASSWORD` on an import for companies with Tally security.
 - `withInvoiceContext`: business facts + resolved context = the complete `SalesInvoiceInput`.

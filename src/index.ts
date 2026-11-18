@@ -112,3 +112,7 @@ export * from "./rules/rulePack.js";
 export * from "./rules/importRules.js";
 export * from "./adaptive/control.js";
 export * from "./profile/contextLearner.js";
+export * from "./resilience/breaker.js";
+export * from "./resilience/sseParser.js";
+export * from "./resilience/resourceGuard.js";
+export * from "./queue/jobQueue.js";

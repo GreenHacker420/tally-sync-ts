@@ -223,6 +223,177 @@
       "min": 1,
       "max": 720,
       "description": "Age after which a learned company context is re-learned even if the masters did not change."
+    },
+    {
+      "key": "retry.maxAttempts",
+      "kind": "int",
+      "default": 8,
+      "unit": "attempts",
+      "min": 1,
+      "max": 50,
+      "description": "Attempts a job gets before it is moved to the dead-letter state for a person to look at."
+    },
+    {
+      "key": "queue.maxPending",
+      "kind": "int",
+      "default": 5000,
+      "unit": "jobs",
+      "min": 100,
+      "max": 1000000,
+      "description": "Pending jobs the local queue accepts before it sheds background work and refuses new events (financial jobs are never dropped)."
+    },
+    {
+      "key": "queue.retentionDays",
+      "kind": "int",
+      "default": 30,
+      "unit": "days",
+      "min": 1,
+      "max": 365,
+      "description": "How long finished jobs are kept before pruning, so the local database stays bounded."
+    },
+    {
+      "key": "queue.leaseSeconds",
+      "kind": "int",
+      "default": 300,
+      "unit": "seconds",
+      "min": 30,
+      "max": 3600,
+      "description": "How long a worker may hold a job; after that another worker may take it and the stale worker's result is ignored."
+    },
+    {
+      "key": "cloud.requestTimeoutMs",
+      "kind": "int",
+      "default": 30000,
+      "unit": "ms",
+      "min": 1000,
+      "max": 300000,
+      "description": "Total deadline of one cloud request."
+    },
+    {
+      "key": "cloud.maxResponseBytes",
+      "kind": "int",
+      "default": 5000000,
+      "unit": "bytes",
+      "min": 100000,
+      "max": 100000000,
+      "description": "Largest cloud response the agent will buffer."
+    },
+    {
+      "key": "cloud.breakerFailureThreshold",
+      "kind": "int",
+      "default": 5,
+      "unit": "failures",
+      "min": 1,
+      "max": 100,
+      "description": "Availability failures within the window that open the cloud circuit."
+    },
+    {
+      "key": "cloud.breakerWindowMs",
+      "kind": "int",
+      "default": 60000,
+      "unit": "ms",
+      "min": 5000,
+      "max": 3600000,
+      "description": "Rolling window in which cloud failures are counted."
+    },
+    {
+      "key": "cloud.breakerCooldownMs",
+      "kind": "int",
+      "default": 30000,
+      "unit": "ms",
+      "min": 1000,
+      "max": 3600000,
+      "description": "How long the cloud circuit stays open before one probe is allowed."
+    },
+    {
+      "key": "sse.idleTimeoutMs",
+      "kind": "int",
+      "default": 60000,
+      "unit": "ms",
+      "min": 10000,
+      "max": 600000,
+      "description": "Silence on the event stream (it sends keepalives) after which the connection is treated as dead and re-opened."
+    },
+    {
+      "key": "sse.maxBufferBytes",
+      "kind": "int",
+      "default": 1000000,
+      "unit": "bytes",
+      "min": 10000,
+      "max": 50000000,
+      "description": "Largest incomplete event line buffered from the event stream."
+    },
+    {
+      "key": "reconnect.baseMs",
+      "kind": "int",
+      "default": 2000,
+      "unit": "ms",
+      "min": 100,
+      "max": 60000,
+      "description": "First reconnect delay; doubles per failure with jitter."
+    },
+    {
+      "key": "reconnect.maxMs",
+      "kind": "int",
+      "default": 300000,
+      "unit": "ms",
+      "min": 1000,
+      "max": 3600000,
+      "description": "Longest reconnect delay."
+    },
+    {
+      "key": "sync.pullIntervalSec",
+      "kind": "int",
+      "default": 120,
+      "unit": "seconds",
+      "min": 15,
+      "max": 3600,
+      "description": "Backstop interval for pulling cloud events even when no wake-up arrives."
+    },
+    {
+      "key": "sync.alterIdPageSize",
+      "kind": "int",
+      "default": 500,
+      "unit": "AlterIDs",
+      "min": 50,
+      "max": 5000,
+      "description": "Width of one AlterID range read from Tally, so one request never loads a whole company."
+    },
+    {
+      "key": "sync.uploadChunkVouchers",
+      "kind": "int",
+      "default": 500,
+      "unit": "vouchers",
+      "min": 50,
+      "max": 5000,
+      "description": "Vouchers per upload to the cloud."
+    },
+    {
+      "key": "resource.maxHeapMb",
+      "kind": "int",
+      "default": 768,
+      "unit": "MB",
+      "min": 128,
+      "max": 8192,
+      "description": "Heap size above which background extraction is paused (posting continues)."
+    },
+    {
+      "key": "resource.minFreeDiskMb",
+      "kind": "int",
+      "default": 500,
+      "unit": "MB",
+      "min": 50,
+      "max": 100000,
+      "description": "Free disk space below which background extraction and non-essential writes stop."
+    },
+    {
+      "key": "resource.maxEventLoopDelayMs",
+      "kind": "int",
+      "default": 500,
+      "unit": "ms",
+      "min": 50,
+      "max": 10000,
+      "description": "Event-loop delay (p99) above which background work is shed."
     }
   ]
 }
