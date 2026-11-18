@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.1.0
+- `CompanyContextLearner`: keeps a company's learned invoice context; re-reads the cheap masters every call and the heavy voucher sample only when the master fingerprint changes or the context is stale. New policy keys `learn.sampleVouchers`, `learn.maxMonths`, `learn.minConfidencePercent`, `learn.refreshHours`.
+
 ## 2.0.0 — dynamic engine
 
 ### Dynamic engine (nothing company-specific is typed in code)

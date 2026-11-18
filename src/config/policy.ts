@@ -38,6 +38,10 @@ const defs = [
   { key: "batch.shrinkPercent", kind: "int", default: 50, unit: "%", min: 10, max: 90, description: "Percentage of the batch kept after a slow or failed import (multiplicative decrease)." },
   { key: "retry.transientScheduleSec", kind: "string", default: "5,15,45,120,300,900", unit: "seconds", description: "Comma-separated delays between attempts for transient failures; the last one repeats." },
   { key: "retry.jitterPercent", kind: "int", default: 20, unit: "%", min: 0, max: 100, description: "Random spread applied to retry delays so many agents do not retry in step." },
+  { key: "learn.sampleVouchers", kind: "int", default: 200, unit: "vouchers", min: 20, max: 2_000, description: "Recent vouchers of a type read to learn how the company writes them." },
+  { key: "learn.maxMonths", kind: "int", default: 12, unit: "months", min: 1, max: 60, description: "How far back the learner looks for its sample." },
+  { key: "learn.minConfidencePercent", kind: "int", default: 90, unit: "%", min: 50, max: 100, description: "Share of sampled vouchers that must agree before a learned value is used without asking the owner." },
+  { key: "learn.refreshHours", kind: "int", default: 24, unit: "hours", min: 1, max: 720, description: "Age after which a learned company context is re-learned even if the masters did not change." },
 ] as const satisfies readonly PolicyDef[];
 
 export type PolicyKey = (typeof defs)[number]["key"];

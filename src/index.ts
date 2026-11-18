@@ -111,3 +111,4 @@ export * from "./profile/invoiceContext.js";
 export * from "./rules/rulePack.js";
 export * from "./rules/importRules.js";
 export * from "./adaptive/control.js";
+export * from "./profile/contextLearner.js";
