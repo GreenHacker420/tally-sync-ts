@@ -51,6 +51,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/fakeTally.d.ts",
+      "import": "./dist/testing/fakeTally.js"
     }
   }
 }

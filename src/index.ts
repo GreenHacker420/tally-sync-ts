@@ -73,3 +73,8 @@ export * from "./schema/catalog/tallyTagsCatalog.js";
 // Import outcome classification + Tally.imp reader
 export * from "./importOutcome.js";
 export * from "./importLog.js";
+
+// Transport safety: gate (single-flight, priority, timeout, circuit breaker), flight recorder, typed errors
+export * from "./errors.js";
+export * from "./gate.js";
+export * from "./recording.js";
