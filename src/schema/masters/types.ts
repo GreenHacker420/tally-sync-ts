@@ -328,6 +328,9 @@ export interface StockItem extends BaseAliasedMasterObject {
   modifyMrpRate?: boolean;
   mailingNames?: string[];
   gstDetails?: GSTDetail[];
+  /** Dated GST entries as exported by Tally (see resolveEffectiveGst). */
+  gstHistory?: import("../../gst/details.js").GstDetailEntry[];
+  hsnHistory?: import("../../gst/details.js").HsnDetailEntry[];
   hsnDetails?: HSNDetail[];
   hsnCode?: string;
   hsnDescription?: string;

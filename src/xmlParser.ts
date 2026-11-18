@@ -142,6 +142,17 @@ export function checkTallyError(xml: string): string | null {
   return null;
 }
 
+/** Masters and vouchers carry GUID / MASTERID / ALTERID; codecs historically ignored them, so attach them once, here. */
+function attachIdentity<T>(parsed: T, node: Record<string, unknown>): T {
+  if (typeof parsed !== "object" || parsed === null) return parsed;
+  const target = parsed as { guid?: string; masterId?: number; alterId?: number };
+  const r = new TallyReader(node);
+  target.guid ??= r.text("GUID");
+  target.masterId ??= r.number("MASTERID");
+  target.alterId ??= r.number("ALTERID");
+  return parsed;
+}
+
 export function parseExportCollection<T = unknown>(xml: string, objectType: TallyObjectType | string): T[] {
   const parsed = parseRawXml(xml);
   const envelope = parsed.ENVELOPE;
@@ -175,7 +186,7 @@ export function parseExportCollection<T = unknown>(xml: string, objectType: Tall
       const rawItems = asArray(collection[tag]);
       return rawItems.map(item => {
         if (codec) {
-          return codec.parse(item as Record<string, unknown>) as unknown as T;
+          return attachIdentity(codec.parse(item as Record<string, unknown>), item as Record<string, unknown>) as unknown as T;
         }
         return item as T;
       });

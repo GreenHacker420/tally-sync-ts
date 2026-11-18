@@ -1,6 +1,6 @@
 export type SqliteRow = { [column: string]: string | number | null | Uint8Array };
 import { DatabaseSync } from "node:sqlite";
-import { TALLY_SQLITE_DDL } from "./tables.js";
+import { TALLY_SQLITE_DDL, TALLY_SQLITE_ADDED_COLUMNS, TALLY_SQLITE_SCHEMA_VERSION } from "./tables.js";
 import type { Company, Group, Ledger, StockItem } from "../schema/masters/types.js";
 import type { BaseObject } from "../schema/common/base.js";
 import type { Voucher } from "../schema/transactions/types.js";
@@ -28,6 +28,18 @@ export class TallySqliteSyncEngine {
 
   initTables(): void {
     this.db.exec(TALLY_SQLITE_DDL);
+    this.migrate();
+  }
+
+  /** Additive, idempotent upgrade of mirror files created by earlier versions (tracked via PRAGMA user_version). */
+  private migrate(): void {
+    for (const { table, column, type } of TALLY_SQLITE_ADDED_COLUMNS) {
+      const existing = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!existing.some((c) => c.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_ledger_guid ON tally_ledgers(guid)`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_stock_item_guid ON tally_stock_items(guid)`);
+    this.db.exec(`PRAGMA user_version = ${TALLY_SQLITE_SCHEMA_VERSION}`);
   }
 
   syncAll(data: {
@@ -48,6 +60,7 @@ export class TallySqliteSyncEngine {
     };
 
     const now = new Date().toISOString();
+    const identityStmt = (table: string) => this.db.prepare(`UPDATE ${table} SET guid = ?, master_id = ?, alter_id = ? WHERE name = ?`);
 
     this.db.exec("BEGIN TRANSACTION;");
     try {
@@ -81,6 +94,7 @@ export class TallySqliteSyncEngine {
         for (const g of data.groups) {
           const rawJson = JSON.stringify(g.unknown ?? {});
           stmt.run(g.name, g.parent ?? null, g.isRevenue ? 1 : 0, g.isDeemedPositive ? 1 : 0, g.affectGrossProfit ? 1 : 0, rawJson, now);
+          identityStmt("tally_groups").run(g.guid ?? null, g.masterId ?? null, g.alterId ?? null, g.name);
           stats.groups++;
         }
       }
@@ -120,12 +134,27 @@ export class TallySqliteSyncEngine {
             l.bankName ?? null, l.accountNumber ?? null, l.ifsCode ?? null, msmeReg, msmeType, msmeDate,
             crLimit, l.creditPeriod ?? null, rawJson, now
           );
+          identityStmt("tally_ledgers").run(l.guid ?? null, l.masterId ?? null, l.alterId ?? null, l.name);
           stats.ledgers++;
         }
       }
 
       // 4. Stock Items
       if (data.stockItems && data.stockItems.length > 0) {
+        const setSupplyStmt = this.db.prepare("UPDATE tally_stock_items SET gst_type_of_supply = ? WHERE name = ?");
+        const delGstStmt = this.db.prepare("DELETE FROM tally_stock_item_gst WHERE item_name = ?");
+        const insGstStmt = this.db.prepare(`
+          INSERT INTO tally_stock_item_gst (item_name, item_guid, applicable_from, state, taxability, source_of_details, igst, cgst, sgst, cess, state_cess, hsn_code)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(item_name, applicable_from, state) DO UPDATE SET
+            item_guid=excluded.item_guid, taxability=excluded.taxability, source_of_details=excluded.source_of_details,
+            igst=excluded.igst, cgst=excluded.cgst, sgst=excluded.sgst, cess=excluded.cess, state_cess=excluded.state_cess, hsn_code=excluded.hsn_code
+        `);
+        const resolveHsnOn = (hist: StockItem["hsnHistory"], from: string): string | null => {
+          let best: { applicableFrom: string; hsnCode?: string } | undefined;
+          for (const h of hist ?? []) if (h.applicableFrom <= from && (!best || h.applicableFrom >= best.applicableFrom)) best = h;
+          return best?.hsnCode ?? null;
+        };
         const stmt = this.db.prepare(`
           INSERT INTO tally_stock_items (
             name, parent, category, base_unit, closing_balance_qty, closing_balance_unit,
@@ -154,9 +183,20 @@ export class TallySqliteSyncEngine {
           stmt.run(
             s.name, s.stockGroup ?? (s as any).parent ?? null, s.stockCategory ?? (s as any).category ?? null, s.baseUnit,
             clBalQty, clBalUnit, clRate, clVal, opQty, opVal, (s as any).hsnCode ?? null, (s as any).hsnDescription ?? null,
-            (s as any).rateOfDuty ? parseFloat((s as any).rateOfDuty) || null : null, (s as any).taxability ?? null,
+            s.integratedTaxRate ?? ((s as any).rateOfDuty ? parseFloat((s as any).rateOfDuty) || null : null), s.taxability ?? null,
             s.costingMethod ?? null, s.valuationMethod ?? null, rawJson, now
           );
+          identityStmt("tally_stock_items").run(s.guid ?? null, s.masterId ?? null, s.alterId ?? null, s.name);
+          setSupplyStmt.run(s.gstTypeOfSupply ?? null, s.name);
+          // Replace the dated GST history for this item.
+          delGstStmt.run(s.name);
+          for (const g of s.gstHistory ?? []) {
+            insGstStmt.run(
+              s.name, s.guid ?? null, g.applicableFrom, g.state, g.taxability ?? null, g.sourceOfDetails ?? null,
+              g.rates.igst ?? null, g.rates.cgst ?? null, g.rates.sgst ?? null, g.rates.cess ?? null, g.rates.stateCess ?? null,
+              resolveHsnOn(s.hsnHistory, g.applicableFrom)
+            );
+          }
           stats.stockItems++;
         }
       }
@@ -219,10 +259,10 @@ export class TallySqliteSyncEngine {
             rawJson, now
           );
 
+          this.db.prepare("UPDATE tally_vouchers SET master_id = ? WHERE guid = ?").run(v.masterId ?? null, guid);
+
           // Ledger entries
           delLedStmt.run(guid);
-          // Clear allocations once per voucher, before iterating entries (deleting inside the loop
-          // would wipe allocations already inserted for earlier ledger entries).
           delBillStmt.run(guid);
           if (v.ledgerEntries) {
             for (const le of v.ledgerEntries) {

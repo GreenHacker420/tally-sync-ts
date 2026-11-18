@@ -4,6 +4,7 @@ import { XmlElement } from "../../xml/types.js";
 import { el, boolElement, amountElement } from "../../xml/writer.js";
 import { TallyCodec } from "../registry.js";
 import { StockItem } from "./types.js";
+import { parseGstDetails, parseHsnDetails } from "../../gst/details.js";
 
 export const stockItemCodec: TallyCodec<StockItem> = {
   xmlTag: "STOCKITEM",
@@ -21,8 +22,12 @@ export const stockItemCodec: TallyCodec<StockItem> = {
       "TAXABILITY", "INTEGRATEDTAXRATE", "CENTRALTAXRATE", "STATETAXRATE", "CESSRATE"
     ]);
 
-    const hsnNode = r.list("HSNDETAILS.LIST")[0];
-    const hsnR = hsnNode ? new TallyReader(hsnNode) : undefined;
+    const gstHistory = parseGstDetails(r.list("GSTDETAILS.LIST"));
+    const hsnHistory = parseHsnDetails(r.list("HSNDETAILS.LIST"));
+    // The latest dated entry is the current one (Tally lists history oldest-first, but sort defensively).
+    const currentHsn = [...hsnHistory].sort((a, b) => a.applicableFrom.localeCompare(b.applicableFrom)).at(-1);
+    const currentGst = [...gstHistory].filter((e) => e.state.trim().toLowerCase() === "any")
+      .sort((a, b) => a.applicableFrom.localeCompare(b.applicableFrom)).at(-1);
 
     const mailingList = asArray(node["MAILINGNAME.LIST"]);
     const mailingNames = mailingList.flatMap((item: any) => asArray(item?.MAILINGNAME ?? item))
@@ -97,13 +102,15 @@ export const stockItemCodec: TallyCodec<StockItem> = {
       openingBatchAllocations: batchAllocations.length ? batchAllocations : undefined,
       components: components.length ? components : undefined,
       minimumOrderQty: r.number("MINIMUMORDERQTY"),
-      hsnCode: r.text("GSTHSNNAME") ?? hsnR?.text("HSNCODE"),
-      hsnDescription: r.text("GSTHSNDESCRIPTION") ?? hsnR?.text("HSN"),
-      taxability: r.text("TAXABILITY"),
-      integratedTaxRate: r.number("INTEGRATEDTAXRATE"),
-      centralTaxRate: r.number("CENTRALTAXRATE"),
-      stateTaxRate: r.number("STATETAXRATE"),
-      cessRate: r.number("CESSRATE"),
+      hsnCode: r.text("GSTHSNNAME") ?? currentHsn?.hsnCode,
+      hsnDescription: r.text("GSTHSNDESCRIPTION") ?? currentHsn?.description,
+      taxability: r.text("TAXABILITY") ?? currentGst?.taxability,
+      integratedTaxRate: r.number("INTEGRATEDTAXRATE") ?? currentGst?.rates.igst,
+      centralTaxRate: r.number("CENTRALTAXRATE") ?? currentGst?.rates.cgst,
+      stateTaxRate: r.number("STATETAXRATE") ?? currentGst?.rates.sgst,
+      cessRate: r.number("CESSRATE") ?? currentGst?.rates.cess,
+      gstHistory: gstHistory.length ? gstHistory : undefined,
+      hsnHistory: hsnHistory.length ? hsnHistory : undefined,
       unknown: r.collectUnknown(known),
       _raw: node,
     };

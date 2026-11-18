@@ -166,6 +166,20 @@ CREATE TABLE IF NOT EXISTS tally_voucher_bill_allocations (
 CREATE INDEX IF NOT EXISTS idx_vch_bill_guid ON tally_voucher_bill_allocations(voucher_guid);
 CREATE INDEX IF NOT EXISTS idx_vch_bill_name ON tally_voucher_bill_allocations(name);
 
+CREATE TABLE IF NOT EXISTS tally_stock_item_gst (
+  item_name TEXT NOT NULL,
+  item_guid TEXT,
+  applicable_from TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'Any',
+  taxability TEXT,
+  source_of_details TEXT,
+  igst REAL, cgst REAL, sgst REAL, cess REAL, state_cess REAL,
+  hsn_code TEXT,
+  PRIMARY KEY (item_name, applicable_from, state)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_gst_guid ON tally_stock_item_gst(item_guid);
+
 CREATE TABLE IF NOT EXISTS tally_sync_status (
   entity_type TEXT PRIMARY KEY,
   last_alter_id INTEGER DEFAULT 0,
@@ -173,3 +187,20 @@ CREATE TABLE IF NOT EXISTS tally_sync_status (
   last_sync_time TEXT NOT NULL
 );
 `;
+
+/** Columns added after the first release; applied to existing mirror files by TallySqliteSyncEngine.migrate(). */
+export const TALLY_SQLITE_ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; type: string }> = [
+  { table: "tally_groups", column: "guid", type: "TEXT" },
+  { table: "tally_groups", column: "master_id", type: "INTEGER" },
+  { table: "tally_groups", column: "alter_id", type: "INTEGER" },
+  { table: "tally_ledgers", column: "guid", type: "TEXT" },
+  { table: "tally_ledgers", column: "master_id", type: "INTEGER" },
+  { table: "tally_ledgers", column: "alter_id", type: "INTEGER" },
+  { table: "tally_stock_items", column: "guid", type: "TEXT" },
+  { table: "tally_stock_items", column: "master_id", type: "INTEGER" },
+  { table: "tally_stock_items", column: "alter_id", type: "INTEGER" },
+  { table: "tally_stock_items", column: "gst_type_of_supply", type: "TEXT" },
+  { table: "tally_vouchers", column: "master_id", type: "INTEGER" },
+];
+
+export const TALLY_SQLITE_SCHEMA_VERSION = 2;

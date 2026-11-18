@@ -47,10 +47,10 @@ export function buildExportCollectionXml(
       fetchList = [...VOUCHER_FETCH_PROFILES.full];
     } else if (colLower === "stockitem") {
       fetchList = [
-        "MasterId", "*", "CanDelete",
+        "MasterId", "*", "CanDelete", "Guid", "AlterId", "Parent", "BaseUnits",
         "ClosingBalance", "ClosingRate", "ClosingValue",
         "OpeningBalance", "OpeningRate", "OpeningValue",
-        "GstApplicable", "GstHsnName", "GstHsnDescription", "Taxability"
+        "GstApplicable", "GstTypeOfSupply", "GstDetails.List", "HsnDetails.List"
       ];
     } else if (colLower === "ledger") {
       fetchList = [

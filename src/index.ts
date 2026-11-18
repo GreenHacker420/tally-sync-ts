@@ -79,5 +79,9 @@ export * from "./errors.js";
 export * from "./gate.js";
 export * from "./recording.js";
 
+// GST details: parse Tally's dated GST/HSN history and resolve the rate effective on an invoice date
+export * from "./gst/details.js";
+export * from "./gst/effective.js";
+
 // Change detection: month-chunked voucher index + diff
 export * from "./voucherIndex.js";
