@@ -79,32 +79,46 @@ Developed against **TallyPrime 7.1** with a real company: profile discovery, led
 
 ```mermaid
 flowchart TD
-    subgraph Tally Prime / ERP 9
-        TP[Tally XML Server :9000]
+    subgraph TALLY["Tally (TallyPrime or ERP 9)"]
+        TP["Tally XML gateway :9000"]
     end
 
-    subgraph tally-sync-ts Client Layer
-        TC[TallyClient]
-        TB[TDL / XML Builders]
-        TPRS[O 1 Case-Insensitive TallyReader]
-        TC --> TB
-        TB -->|HTTP POST XML| TP
-        TP -->|XML Response| TPRS
+    subgraph CLIENT["tally-sync-ts client layer"]
+        GATE["TallyGate: single flight, priorities, breaker"]
+        TC["TallyClient"]
+        TB["TDL and XML builders"]
+        TPRS["TallyReader: O(1) case-insensitive parsing"]
+        TC --> GATE
+        GATE --> TB
+        TB -->|"HTTP POST XML"| TP
+        TP -->|"XML response"| TPRS
     end
 
-    subgraph Data & Storage Layer
-        CAT[808 Tags Catalog]
-        ENG[TallySqliteSyncEngine node:sqlite]
+    subgraph ENGINE["Dynamic sync engine"]
+        PROF["Company profile discovery"]
+        BLUE["Voucher blueprint learner"]
+        POST["GST invoice builder and idempotent poster"]
+        QUEUE["Durable job queue with leases"]
+        TC --> PROF
+        PROF --> BLUE
+        BLUE --> POST
+        POST --> QUEUE
+    end
+
+    subgraph STORAGE["Data and storage layer"]
+        CAT["808-tag catalog"]
+        ENG["TallySqliteSyncEngine (node:sqlite)"]
+        DB[("Local SQLite mirror")]
         TPRS --> CAT
         CAT --> ENG
-        ENG --> DB[(Local SQLite Mirror)]
+        ENG --> DB
     end
 
-    subgraph Analytics & Compliance Layer
-        GST[TallyGstAnalytics GSTR-1 / GSTR-3B]
-        MSME[TallyMsmeAnalytics Sec 43B h]
-        FIN[TallyFinancialAnalytics P&L / BS]
-        REG[TallyRegisterAnalytics Sales / Aging]
+    subgraph ANALYTICS["Analytics and compliance layer"]
+        GST["GSTR-1 and GSTR-3B"]
+        MSME["MSME Section 43B(h)"]
+        FIN["Profit and Loss, Balance Sheet"]
+        REG["Sales register and ageing"]
         DB --> GST
         DB --> MSME
         DB --> FIN

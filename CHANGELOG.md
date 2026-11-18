@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.3.4
+- README: the architecture diagram now renders on GitHub and npm (labels quoted; `/`, `:` and `&` broke the Mermaid parser) and shows the dynamic engine and the gate.
+
 ## 2.3.3
 - `JobQueue` operations join an open transaction instead of failing with "cannot start a transaction within a transaction", so a caller can persist pulled events, enqueue jobs and advance its cursor atomically. Contact details in the README.
 
