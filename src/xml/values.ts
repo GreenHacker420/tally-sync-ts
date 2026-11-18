@@ -63,6 +63,9 @@ export function getSingleValue(val: unknown): unknown {
 export function tallyText(value: unknown): string | undefined {
   const raw = getSingleValue(value);
   if (raw === undefined || raw === null) return undefined;
+  // An empty element that carries attributes (e.g. <RESULT TYPE="String"></RESULT>) parses to an object
+  // with no "#text"; that is "no value", not the string "[object Object]".
+  if (typeof raw === "object") return undefined;
   const text = String(raw).replace(REGEX_CONTROL_CHAR, "").trim();
   return text === "" ? undefined : text;
 }
