@@ -36,7 +36,7 @@ export type TaxLedgerNaming =
 
 export interface LedgerNames {
   sales: string;
-  roundOff: string;
+  roundOff?: string;
   tax: TaxLedgerNaming;
 }
 
@@ -90,15 +90,16 @@ export const salesInvoiceGuid = (key: string): string => `sc-sal-${key}`;
 
 function taxEntries(tax: TaxResult, naming: TaxLedgerNaming): VoucherEntry[] {
   const totals = new Map<string, number>();
-  const add = (name: string, paise: number) => { if (paise > 0) totals.set(name, (totals.get(name) ?? 0) + paise); };
+  // The ledger name is looked up only when there is tax to book: a company need not own a ledger for a head it never charges.
+  const add = (name: () => string, paise: number) => { if (paise > 0) { const n = name(); totals.set(n, (totals.get(n) ?? 0) + paise); } };
   for (const slab of tax.slabs) {
     const bp = slab.gst.basisPoints;
     if (naming.mode === "COMMON") {
-      add(naming.cgst, slab.cgstPaise); add(naming.sgst, slab.sgstPaise); add(naming.igst, slab.igstPaise);
-      if (naming.cess) add(naming.cess, slab.cessPaise);
+      add(() => naming.cgst, slab.cgstPaise); add(() => naming.sgst, slab.sgstPaise); add(() => naming.igst, slab.igstPaise);
+      add(() => { if (!naming.cess) throw new RangeError("Cess is due but no cess ledger is configured"); return naming.cess; }, slab.cessPaise);
     } else {
-      add(naming.name("cgst", bp.cgst), slab.cgstPaise); add(naming.name("sgst", bp.sgst), slab.sgstPaise);
-      add(naming.name("igst", bp.igst), slab.igstPaise); add(naming.name("cess", bp.cess), slab.cessPaise);
+      add(() => naming.name("cgst", bp.cgst), slab.cgstPaise); add(() => naming.name("sgst", bp.sgst), slab.sgstPaise);
+      add(() => naming.name("igst", bp.igst), slab.igstPaise); add(() => naming.name("cess", bp.cess), slab.cessPaise);
     }
   }
   return [...totals.entries()].map(([ledger, amountPaise]) => ({ ledger, amountPaise }));
@@ -117,7 +118,10 @@ export function buildSalesInvoice(input: SalesInvoiceInput): BuiltSalesInvoice {
 
   const entries: VoucherEntry[] = [{ ledger: input.party.name, amountPaise: -tax.partyAmountPaise }];
   entries.push(...taxEntries(tax, input.ledgers.tax));
-  if (tax.roundOffPaise !== 0) entries.push({ ledger: input.ledgers.roundOff, amountPaise: tax.roundOffPaise });
+  if (tax.roundOffPaise !== 0) {
+    if (!input.ledgers.roundOff) throw new RangeError(`This invoice needs a round-off of ${tax.roundOffPaise} paise but no round-off ledger is configured`);
+    entries.push({ ledger: input.ledgers.roundOff, amountPaise: tax.roundOffPaise });
+  }
   const lineCredits = tax.lines.reduce((s, l) => s + l.taxablePaise, 0);
   const net = entries.reduce((s, e) => s + e.amountPaise, 0) + lineCredits;
   if (net !== 0) throw new UnbalancedVoucherError(net);

@@ -49,3 +49,15 @@ describe("buildSalesInvoice invents nothing about the company", () => {
     assert.match(buildSalesInvoice(base({ voucherTypeName: "Retail Sales" })).xml, /<VOUCHERTYPENAME>Retail Sales<\/VOUCHERTYPENAME>/);
   });
 });
+
+describe("tax ledger lookup happens only for taxes that are actually charged", () => {
+  it("a per-rate company with no cess ledger posts normally (the name lookup was made even for zero cess)", () => {
+    const names: string[] = [];
+    const xml = buildSalesInvoice(base({ ledgers: { sales: "L-SALES", tax: { mode: "PER_RATE", name: (h, bp) => { names.push(`${h}${bp}`); if (h === "cess") throw new Error("no cess ledger"); return `${h}-${bp}`; } } } }));
+    assert.ok(xml.entries.length >= 3); assert.ok(!names.some((n) => n.startsWith("cess")), `looked up ${names.join(",")}`);
+  });
+  it("cess due but no cess ledger configured is a clear error, not a silently unbalanced voucher", () => {
+    const withCess: LineGst = { taxability: "Taxable", basisPoints: { cgst: 900, sgst: 900, igst: 1800, cess: 100 } };
+    assert.throws(() => buildSalesInvoice(base({}, { gst: withCess })), /cess ledger/i);
+  });
+});

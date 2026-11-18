@@ -88,7 +88,7 @@ export function planSalesInvoiceMasters(input: SalesInvoiceInput, catalog: Maste
 
   const party = need(input.party.name, MissingKind.PARTY_LEDGER, (g) => expect.partyGroups.some((p) => key(p) === key(g)), expect.partyGroups.join(" / "));
   need(input.ledgers.sales, MissingKind.SALES_LEDGER, (g) => key(g) === key(expect.salesGroup), expect.salesGroup);
-  need(input.ledgers.roundOff, MissingKind.ROUND_OFF_LEDGER, () => true, "any");
+  if (input.ledgers.roundOff) need(input.ledgers.roundOff, MissingKind.ROUND_OFF_LEDGER, () => true, "any");
   for (const name of taxLedgerNames) need(name, MissingKind.TAX_LEDGER, (g) => key(g) === key(expect.taxGroup), expect.taxGroup);
   for (const line of input.lines) if (!catalog.stockItems.has(key(line.itemName))) missing.push({ kind: MissingKind.STOCK_ITEM, name: line.itemName });
 
