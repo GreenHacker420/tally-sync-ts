@@ -1,4 +1,5 @@
 import type { TallyTransport } from "./transport.js";
+import { policyDefault, policyNumber, type ResolvedPolicy } from "./config/policy.js";
 import { TallyCircuitOpenError, TallyTimeoutError, TallyTransportError } from "./errors.js";
 
 /** write > light-read > heavy-read: a counter's bill must never wait behind a month-long export. */
@@ -50,12 +51,20 @@ export class TallyGate implements TallyTransport {
   private probing = false;
 
   constructor(private readonly inner: TallyTransport, options: TallyGateOptions = {}) {
-    this.timeoutMs = options.timeoutMs ?? 30_000;
-    this.failureThreshold = options.failureThreshold ?? 2;
-    this.cooldownMs = options.cooldownMs ?? 15_000;
+    this.timeoutMs = options.timeoutMs ?? policyDefault("gate.timeoutMs");
+    this.failureThreshold = options.failureThreshold ?? policyDefault("gate.failureThreshold");
+    this.cooldownMs = options.cooldownMs ?? policyDefault("gate.cooldownMs");
     this.now = options.now ?? Date.now;
     this.probeXml = options.probeXml ?? TALLY_LIGHT_PROBE_XML;
-    this.probeTimeoutMs = options.probeTimeoutMs ?? 10_000;
+    this.probeTimeoutMs = options.probeTimeoutMs ?? policyDefault("gate.probeTimeoutMs");
+  }
+
+  /** Build a gate whose tunables come from resolved policy (so tenant/shop/company layers apply). */
+  static fromPolicy(inner: TallyTransport, policy: ResolvedPolicy, now?: () => number): TallyGate {
+    return new TallyGate(inner, {
+      timeoutMs: policyNumber(policy, "gate.timeoutMs"), cooldownMs: policyNumber(policy, "gate.cooldownMs"),
+      failureThreshold: policyNumber(policy, "gate.failureThreshold"), probeTimeoutMs: policyNumber(policy, "gate.probeTimeoutMs"), now,
+    });
   }
 
   get state(): "CLOSED" | "OPEN" | "HALF_OPEN" {

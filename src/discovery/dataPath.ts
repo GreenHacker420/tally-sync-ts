@@ -78,6 +78,7 @@ export interface DataPathReport {
 }
 
 import { WINDOWS_FINDER_ENVIRONMENT, type FinderEnvironment } from "../dialects/environment.js";
+import { policyDefault } from "../config/policy.js";
 
 export interface FindOptions {
   /** Environment data (skip lists, default roots, log names); defaults to the Windows profile. */
@@ -268,7 +269,7 @@ export async function findTallyDataPaths(opts: FindOptions): Promise<DataPathRep
   const wantedHaveLiveCopy = (): boolean => [...wanted].every((n) => [...found.values()].some((c) => c.number === n && !c.looksLikeBackup));
   if (deepScan || unresolvedNow().length || !wantedHaveLiveCopy()) {
     scan.performed = true;
-    const maxDepth = opts.maxDepth ?? 4; const maxDirs = opts.maxDirs ?? 20_000; const budget = opts.timeBudgetMs ?? 20_000;
+    const maxDepth = opts.maxDepth ?? policyDefault("discovery.maxDepth"); const maxDirs = opts.maxDirs ?? policyDefault("discovery.maxDirs"); const budget = opts.timeBudgetMs ?? policyDefault("discovery.timeBudgetMs");
     const queue: Array<{ path: string; depth: number }> = [];
     for (const d of await fs.listDrives()) queue.push({ path: normWinPath(d), depth: 0 });
     // find shallow (depth) first so live data is found before deep trees

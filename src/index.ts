@@ -99,3 +99,6 @@ export * from "./discovery/dataPath.js";
 // Dialects: Tally protocol facts and environment data as data (no vocabulary in engine code)
 export * from "./dialects/tally.js";
 export * from "./dialects/environment.js";
+
+// Policy registry: tunables declared once, resolved from layers with provenance
+export * from "./config/policy.js";

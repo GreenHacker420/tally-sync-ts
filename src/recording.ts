@@ -1,4 +1,5 @@
 import type { TallyTransport } from "./transport.js";
+import { policyDefault } from "./config/policy.js";
 
 export interface RecordedExchange {
   at: string;
@@ -34,8 +35,8 @@ export class RecordingTransport implements TallyTransport {
   private readonly rules: Array<[RegExp, string]>;
 
   constructor(private readonly inner: TallyTransport, options: RecordingOptions = {}) {
-    this.capacity = options.capacity ?? 50;
-    this.maxChars = options.maxChars ?? 4000;
+    this.capacity = options.capacity ?? policyDefault("recording.capacity");
+    this.maxChars = options.maxChars ?? policyDefault("recording.maxChars");
     this.rules = [...BUILTIN_REDACTIONS, ...(options.redact ?? [])];
   }
 
