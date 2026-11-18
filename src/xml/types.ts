@@ -120,6 +120,7 @@ export interface TallyXmlCollection {
 export type TallyXmlNodeObject = Record<string, unknown>;
 
 export interface TallyXmlData {
+  RESPONSE?: unknown;
   COLLECTION?: TallyXmlCollection;
   TALLYMESSAGE?: TallyXmlNodeObject | TallyXmlNodeObject[];
   IMPORTRESULT?: TallyXmlImportResult;
@@ -149,6 +150,7 @@ export interface TallyXmlBody {
 
 export interface TallyXmlEnvelope {
   HEADER?: TallyXmlHeader;
+  RESPONSE?: unknown;
   BODY?: TallyXmlBody;
   DATA?: TallyXmlData;
   RESULTS?: TallyXmlResultsContainer;
@@ -163,5 +165,6 @@ export interface TallyXmlEnvelope {
 
 export interface TallyXmlRoot {
   ENVELOPE?: TallyXmlEnvelope;
+  RESPONSE?: unknown;
   [key: string]: unknown;
 }

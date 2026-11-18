@@ -85,9 +85,11 @@ export interface PostResponse {
   altered?: number;
   deleted?: number;
   ignored?: number;
+  combined?: number;
   cancelled?: number;
   errors?: number;
   lineErrors?: string[];
+  needsImportLog?: boolean;
   error?: string;
 }
 
@@ -291,17 +293,39 @@ export function parsePeriodicVoucherStatistics(xml: string): AutoColVoucherTypeS
   }];
 }
 
+const IMPORT_COUNTER_TAGS = ["CREATED", "ALTERED", "DELETED", "IGNORED", "COMBINED", "CANCELLED", "ERRORS", "LINEERROR", "LASTVCHID", "LASTMID"] as const;
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function hasImportCounters(node: Record<string, unknown> | undefined): node is Record<string, unknown> {
+  return !!node && IMPORT_COUNTER_TAGS.some((tag) => tag in node);
+}
+
+/**
+ * Tally answers an import with a bare <RESPONSE> root. Some gateways/older builds wrap the same
+ * counters in ENVELOPE/BODY/DATA (optionally under IMPORTRESULT). Find the node that carries them.
+ */
+function locateImportNode(root: TallyXmlRoot): Record<string, unknown> | undefined {
+  const candidates: Array<Record<string, unknown> | undefined> = [
+    asRecord(root.RESPONSE),
+    asRecord(root.ENVELOPE?.RESPONSE),
+    asRecord(asRecord(root.ENVELOPE?.BODY?.DATA)?.RESPONSE),
+    asRecord(root.ENVELOPE?.BODY?.DATA?.IMPORTRESULT),
+    asRecord(root.ENVELOPE?.BODY?.DATA),
+    asRecord(root.ENVELOPE?.DATA),
+  ];
+  return candidates.find(hasImportCounters);
+}
+
 export function parsePostResponse(xml: string): PostResponse[] {
   const parsed = parseRawXml(xml);
   const envelope = parsed.ENVELOPE;
-  if (!envelope) {
-    return [{ status: "failure", message: "Invalid XML response: missing ENVELOPE" }];
-  }
 
-  const data = envelope.BODY?.DATA ?? envelope.DATA;
-
-  // Check custom report results: <RESULTS><RESULT>...
-  const results = data?.RESULTS?.RESULT ?? envelope.RESULTS?.RESULT;
+  // Custom report results: <RESULTS><RESULT>...
+  const data = envelope?.BODY?.DATA ?? envelope?.DATA;
+  const results = data?.RESULTS?.RESULT ?? envelope?.RESULTS?.RESULT;
   if (results) {
     return asArray(results).map((item: TallyXmlResultItem) => {
       const r = new TallyReader(item);
@@ -320,28 +344,42 @@ export function parsePostResponse(xml: string): PostResponse[] {
     });
   }
 
-  const lineErrors = asArray(data?.LINEERROR).map(tallyText).filter((x): x is string => !!x);
+  const node = locateImportNode(parsed);
+  if (!node) {
+    return [{ status: "failure", message: "Unrecognised Tally import response (no import counters found)" }];
+  }
+
+  const r = new TallyReader(node);
+  const lineErrors = asArray(node.LINEERROR).map(tallyText).filter((x): x is string => !!x);
+
+  const created = r.number("CREATED") ?? 0;
+  const altered = r.number("ALTERED") ?? 0;
+  const deleted = r.number("DELETED") ?? 0;
+  const ignored = r.number("IGNORED") ?? 0;
+  const combined = r.number("COMBINED") ?? 0;
+  const cancelled = r.number("CANCELLED") ?? 0;
+  const errors = r.number("ERRORS") ?? lineErrors.length;
+  const lastMid = r.number("LASTMID");
+  const lastVchId = r.number("LASTVCHID");
 
   const rawStatus = tallyText(envelope?.HEADER?.STATUS);
-  const isFailure = rawStatus === "0" || rawStatus?.toLowerCase() === "failure" || lineErrors.length > 0;
-
-  const importResult = data?.IMPORTRESULT;
-  const r = importResult ? new TallyReader(importResult) : undefined;
-
-  const created = r?.number("CREATED") ?? 0;
-  const altered = r?.number("ALTERED") ?? 0;
-  const deleted = r?.number("DELETED") ?? 0;
-  const ignored = r?.number("IGNORED") ?? 0;
-  const cancelled = r?.number("CANCELLED") ?? 0;
-  const errors = r?.number("ERRORS") ?? lineErrors.length;
-  const lastMid = r?.number("LASTMID");
-  const lastVchId = r?.number("LASTVCHID");
+  const headerFailed = rawStatus === "0" || rawStatus?.toLowerCase() === "failure";
+  const isFailure = headerFailed || lineErrors.length > 0 || errors > 0;
+  // TallyPrime 3.0+ may report ERRORS>0 with an empty <LINEERROR/>; the text is only in Tally.imp.
+  const needsImportLog = isFailure && lineErrors.length === 0 && errors > 0;
 
   const message = isFailure
-    ? (lineErrors.join("; ") || "Import failed")
-    : (created > 0 && altered === 0 && deleted === 0)
+    ? lineErrors.length > 0
+      ? lineErrors.join("; ")
+      : needsImportLog
+        ? `Tally reported ${errors} import error(s) without a description; see Tally.imp`
+        : "Import failed"
+    : created > 0 && altered === 0 && deleted === 0
       ? "Created successfully"
       : `Successfully processed: ${created} created, ${altered} altered, ${deleted} deleted`;
+
+  // LASTVCHID is the voucher's master id; LASTMID is always 0 for voucher imports but real for master imports.
+  const masterId = lastVchId && lastVchId > 0 ? lastVchId : lastMid && lastMid > 0 ? lastMid : undefined;
 
   return [{
     status: isFailure ? "failure" : "success",
@@ -350,13 +388,15 @@ export function parsePostResponse(xml: string): PostResponse[] {
     altered,
     deleted,
     ignored,
+    combined,
     cancelled,
     errors,
     lastMasterId: lastMid,
-    masterId: lastMid ?? lastVchId,
+    masterId,
     lastVoucherId: lastVchId,
-    lastVchId: lastVchId,
+    lastVchId,
     lineErrors: lineErrors.length ? lineErrors : undefined,
+    needsImportLog: needsImportLog ? true : undefined,
     error: isFailure ? message : undefined,
   }];
 }
