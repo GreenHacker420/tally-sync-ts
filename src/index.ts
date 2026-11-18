@@ -92,3 +92,6 @@ export * from "./post/tax.js";
 export * from "./post/salesInvoice.js";
 export * from "./post/operation.js";
 export * from "./post/catalog.js";
+
+// Tally data-path finder (where the company folders live; metadata only, never opens data files)
+export * from "./discovery/dataPath.js";
